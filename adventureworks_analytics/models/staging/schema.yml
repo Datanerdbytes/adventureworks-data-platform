@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_customer
+    description: "Staged clean customer dimension records sourced from raw_adventureworks.dimcustomer."
+    columns:
+      - name: customer_key
+        description: "The primary key identifying a unique customer record."
+        data_tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: "The business alternative tracking identifier for the customer."
+        data_tests:
+          - not_null
+
+      - name: email_address
+        description: "The validated contact email address of the record."
+        data_tests:
+          - not_null
+
+      - name: marital_status
+        description: "The expanded marital state description (Married or Single)."
+        data_tests:
+          - accepted_values:
+              #  FIX: Nesting parameters inside the arguments key completely clears the deprecation warning
+              arguments:
+                values: ['Married', 'Single']
+
+      - name: gender
+        description: "The expanded biographical tracking value (Male or Female)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Male', 'Female']

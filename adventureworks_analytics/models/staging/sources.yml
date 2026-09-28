@@ -6,11 +6,46 @@ sources:
     schema: raw_adventureworks               
     tables:
       - name: dimcurrency
+      # ========================================================================
+      # RAW CUSTOMER SOURCE TESTS
+      # ========================================================================
       - name: dimcustomer
+        description: "Raw landing zone table for customer data."
+        columns:
+          - name: customerkey
+            data_tests:
+              - unique
+              - not_null
+
+          - name: emailaddress
+            description: "Ensures email communication links are fully present."
+            data_tests: 
+              - not_null
+
+          - name: maritalstatus
+            description: "Catches dirty or unhandled letters before staging translation."
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['M', 'S', 'm', 's']   
       - name: dimdate
       - name: dimemployee
       - name: dimgeography
+      # ========================================================================
+      # RAW PRODUCT SOURCE TESTS
+      # ========================================================================
       - name: dimproduct
+        description: "Raw landing zone table for product data."
+        columns:
+          - name: productkey
+            data_tests:
+              - unique 
+              - not_null
+
+          - name: englishproductname
+            description: "Guarantees that no nameless inventory records leak downstream."
+            data_tests:
+              - not_null 
       - name: dimproductcategory
       - name: dimproductsubcategory
       - name: dimpromotion
