@@ -1,0 +1,15 @@
+[project]
+name = "postgres-adventureworksdw"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "google-cloud-bigquery>=3.45.2",
+    "google-cloud-bigquery-storage>=2.41.0",
+    "pandas>=3.0.6",
+    "pandas-gbq>=0.35.2",
+    "psycopg2-binary>=2.9.13",
+    "pyarrow>=25.0.1",
+    "python-dotenv>=1.2.3",
+    "sqlalchemy>=2.1.1",
+    "sqlalchemy-bigquery>=1.17.2",
+]
