@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: raw_adventureworks
+    database: quantum-echo-data-eng-prod     
+    schema: raw_adventureworks               
+    tables:
+      - name: dimcurrency
+      - name: dimcustomer
+      - name: dimdate
+      - name: dimemployee
+      - name: dimgeography
+      - name: dimproduct
+      - name: dimproductcategory
+      - name: dimproductsubcategory
+      - name: dimpromotion
+      - name: dimreseller
+      - name: dimsalesterritory
+      - name: factinternetsales
+      - name: factresellersales
