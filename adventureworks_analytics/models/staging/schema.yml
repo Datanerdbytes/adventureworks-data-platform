@@ -10,6 +10,18 @@ models:
           - unique
           - not_null
 
+      - name: first_name
+        data_tests:
+          - no_unwanted_spaces
+
+      - name: middle_name
+        data_tests:
+          - no_unwanted_spaces
+
+      - name: last_name
+        data_tests:
+          - no_unwanted_spaces
+
       - name: customer_id
         description: "The business alternative tracking identifier for the customer."
         data_tests:
@@ -19,14 +31,15 @@ models:
         description: "The validated contact email address of the record."
         data_tests:
           - not_null
+          - no_unwanted_spaces
 
       - name: marital_status
         description: "The expanded marital state description (Married or Single)."
         data_tests:
           - accepted_values:
-              #  FIX: Nesting parameters inside the arguments key completely clears the deprecation warning
               arguments:
                 values: ['Married', 'Single']
+          - no_unwanted_spaces
 
       - name: gender
         description: "The expanded biographical tracking value (Male or Female)."
@@ -34,3 +47,37 @@ models:
           - accepted_values:
               arguments:
                 values: ['Male', 'Female']
+          - no_unwanted_spaces
+  # ========================================================================
+  # STG_PRODUCT TESTS
+  # ========================================================================
+  - name: stg_product
+    description: "Staged clean product dimension records sourced from raw_adventureworks.dimproduct."
+    columns:
+      - name: product_key
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        description: "Guarantees that no nameless inventory records leak downstream."
+        data_tests:
+          - not_null 
+          - no_unwanted_spaces
+
+      - name: product_line
+        description: "Product line category for the item."
+        data_tests:
+          - no_unwanted_spaces
+          - accepted_values:
+              arguments:
+                values: ['Mountain', 'Road', 'Touring', 'Components', 'Unknown']
+
+      - name: model_name
+        description: "Name of the product model associated with the item."
+        data_tests:
+          - no_unwanted_spaces
+
+
+
+

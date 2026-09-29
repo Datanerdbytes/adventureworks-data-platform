@@ -9,6 +9,6 @@
 }
 */
 
-select distinct
-    finishedgoodsflag
-from `quantum-echo-data-eng-prod.raw_adventureworks.dimproduct` limit 5;
+SELECT  *
+FROM `quantum-echo-data-eng-prod.raw_adventureworks.dimcustomer` limit 5;
+
