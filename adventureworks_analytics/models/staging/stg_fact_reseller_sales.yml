@@ -1,0 +1,118 @@
+version: 2
+models:
+- name: stg_fact_reseller_sales
+  description: Reseller sales at one row per sales order and line item; a direct typed projection of the raw source.
+  data_tests:
+  - not_empty
+  - dbt_utils.unique_combination_of_columns:
+      arguments:
+        combination_of_columns:
+        - sales_order_number
+        - sales_order_line_item
+  - dbt_utils.equal_rowcount:
+      arguments:
+        compare_model: source('raw_adventureworks', 'factresellersales')
+  - dbt_utils.expression_is_true:
+      arguments:
+        expression: order_quantity > 0
+  - dbt_utils.expression_is_true:
+      arguments:
+        expression: unit_price_discount_percentage between 0 and 1
+  - dbt_utils.expression_is_true:
+      arguments:
+        expression: due_date >= order_date and ship_date >= order_date
+  - dbt_utils.expression_is_true:
+      arguments:
+        expression: order_date_key = cast(format_date('%Y%m%d', order_date) as int64) and due_date_key = cast(format_date('%Y%m%d',
+          due_date) as int64) and ship_date_key = cast(format_date('%Y%m%d', ship_date) as int64)
+  columns:
+  - name: sales_order_number
+    data_tests:
+    - not_null
+  - name: sales_order_line_item
+    data_tests:
+    - not_null
+  - name: product_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_product')
+          field: product_key
+  - name: reseller_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimreseller')
+          field: resellerkey
+  - name: employee_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimemployee')
+          field: employeekey
+  - name: currency_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimcurrency')
+          field: currencykey
+  - name: sales_territory_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimsalesterritory')
+          field: salesterritorykey
+  - name: promotion_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimpromotion')
+          field: promotionkey
+  - name: order_date_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimdate')
+          field: datekey
+  - name: due_date_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimdate')
+          field: datekey
+  - name: ship_date_key
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: source('raw_adventureworks', 'dimdate')
+          field: datekey
+  - name: order_quantity
+    data_tests:
+    - not_null
+  - name: unit_price
+    data_tests:
+    - not_null
+  - name: sales_amount
+    data_tests:
+    - not_null
+  - name: unit_price_discount_percentage
+    data_tests:
+    - not_null
+  - name: order_date
+    data_tests:
+    - not_null
+  - name: due_date
+    data_tests:
+    - not_null
+  - name: ship_date
+    data_tests:
+    - not_null

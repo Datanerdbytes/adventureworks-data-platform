@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: stg_dim_date
+    description: "Calendar date dimension. Weekdays start at Sunday (1); week 1 contains January 1."
+    data_tests:
+      - not_empty
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw_adventureworks', 'dimdate')
+    columns:
+      - name: date_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: source('raw_adventureworks', 'dimdate')
+                field: datekey
+      - name: calendar_date
+        data_tests:
+          - not_null
+          - unique
+      - name: day_of_week_number
+        data_tests:
+          - not_null
+      - name: day_of_week_name
+        data_tests:
+          - not_null
+      - name: day_of_month_number
+        data_tests:
+          - not_null
+      - name: day_of_year_number
+        data_tests:
+          - not_null
+      - name: week_of_year_number
+        data_tests:
+          - not_null
+      - name: month_name
+        data_tests:
+          - not_null
+      - name: month_number
+        data_tests:
+          - not_null
+      - name: calendar_quarter
+        data_tests:
+          - not_null
+      - name: calendar_semester
+        data_tests:
+          - not_null
+      - name: calendar_year
+        data_tests:
+          - not_null

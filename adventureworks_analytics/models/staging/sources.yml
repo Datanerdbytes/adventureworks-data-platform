@@ -1,95 +1,339 @@
 version: 2
-
 sources:
-  - name: raw_adventureworks
-    database: quantum-echo-data-eng-prod     
-    schema: raw_adventureworks               
-    tables:
-      - name: dimcurrency
-      # ========================================================================
-      # RAW CUSTOMER SOURCE TESTS
-      # ========================================================================
-      - name: dimcustomer
-        description: "Raw landing zone table for customer data."
-        columns:
-          - name: customerkey
-            data_tests:
-              - unique
-              - not_null
-          - name: customeralternatekey
-            description: "Alternate business key used to identify the customer in source systems."
-            data_tests:
-              - not_null
-
-          - name: firstname
-            data_tests:
-              - no_unwanted_spaces
-
-          - name: middlename
-            data_tests:
-              - no_unwanted_spaces
-
-          - name: lastname
-            data_tests:
-              - no_unwanted_spaces
-
-          - name: gender
-            data_tests:
-              - accepted_values:
-                  arguments:
-                    values: ['M', 'F', 'm', 'f']
-              - no_unwanted_spaces
-
-          - name: emailaddress
-            description: "Ensures email communication links are fully present."
-            data_tests: 
-              - no_unwanted_spaces
-
-          - name: maritalstatus
-            description: "Catches dirty or unhandled letters before staging translation."
-            data_tests:
-              - accepted_values:
-                  arguments:
-                    values: ['M', 'S', 'm', 's']
-              - no_unwanted_spaces
-
-      - name: dimdate
-      - name: dimemployee
-      - name: dimgeography
-      # ========================================================================
-      # RAW PRODUCT SOURCE TESTS
-      # ========================================================================
-      - name: dimproduct
-        description: "Raw landing zone table for product data."
-        columns:
-          - name: productkey
-            data_tests:
-              - unique 
-              - not_null
-
-          - name: englishproductname
-            description: "Guarantees that no nameless inventory records leak downstream."
-            data_tests:
-              - not_null 
-              - no_unwanted_spaces
-
-          - name: productline
-            description: "Product line category for the item."
-            data_tests:
-              - no_unwanted_spaces
-              - accepted_values:
-                  arguments:
-                    values: ['M', 'R', 'T', 'S']
-
-          - name: modelname
-            description: "Name of the product model associated with the item."
-            data_tests:
-              - no_unwanted_spaces
-
-      - name: dimproductcategory
-      - name: dimproductsubcategory
-      - name: dimpromotion
-      - name: dimreseller
-      - name: dimsalesterritory
-      - name: factinternetsales
-      - name: factresellersales
+- name: raw_adventureworks
+  database: quantum-echo-data-eng-prod
+  schema: raw_adventureworks
+  tables:
+  - name: dimcurrency
+    data_tests:
+    - not_empty
+    columns:
+    - name: currencykey
+      data_tests:
+      - not_null
+      - unique
+  - name: dimcustomer
+    description: Raw landing zone table for customer data.
+    columns:
+    - name: customerkey
+      data_tests:
+      - unique
+      - not_null
+    - name: customeralternatekey
+      description: Alternate business key used to identify the customer in source systems.
+      data_tests:
+      - not_null
+    - name: firstname
+      data_tests:
+      - no_unwanted_spaces
+    - name: middlename
+      data_tests:
+      - no_unwanted_spaces
+    - name: lastname
+      data_tests:
+      - no_unwanted_spaces
+    - name: gender
+      data_tests:
+      - accepted_values:
+          arguments:
+            values:
+            - M
+            - F
+            - m
+            - f
+      - no_unwanted_spaces
+    - name: emailaddress
+      description: Ensures email communication links are fully present.
+      data_tests:
+      - no_unwanted_spaces
+    - name: maritalstatus
+      description: Catches dirty or unhandled letters before staging translation.
+      data_tests:
+      - accepted_values:
+          arguments:
+            values:
+            - M
+            - S
+            - m
+            - s
+      - no_unwanted_spaces
+    - name: geographykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimgeography')
+            field: geographykey
+    data_tests:
+    - not_empty
+  - name: dimdate
+    data_tests:
+    - not_empty
+    columns:
+    - name: datekey
+      data_tests:
+      - not_null
+      - unique
+  - name: dimemployee
+    data_tests:
+    - not_empty
+    columns:
+    - name: employeekey
+      data_tests:
+      - not_null
+      - unique
+    - name: salesterritorykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimsalesterritory')
+            field: salesterritorykey
+  - name: dimgeography
+    data_tests:
+    - not_empty
+    columns:
+    - name: geographykey
+      data_tests:
+      - not_null
+      - unique
+    - name: salesterritorykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimsalesterritory')
+            field: salesterritorykey
+  - name: dimproduct
+    description: Raw landing zone table for product data.
+    columns:
+    - name: productkey
+      data_tests:
+      - unique
+      - not_null
+    - name: englishproductname
+      description: Guarantees that no nameless inventory records leak downstream.
+      data_tests:
+      - not_null
+      - no_unwanted_spaces
+    - name: productline
+      description: Product line category for the item.
+      data_tests:
+      - no_unwanted_spaces
+      - accepted_values:
+          arguments:
+            values:
+            - M
+            - R
+            - T
+            - S
+    - name: modelname
+      description: Name of the product model associated with the item.
+      data_tests:
+      - no_unwanted_spaces
+    - name: productsubcategorykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimproductsubcategory')
+            field: productsubcategorykey
+    data_tests:
+    - not_empty
+  - name: dimproductcategory
+    data_tests:
+    - not_empty
+    columns:
+    - name: productcategorykey
+      data_tests:
+      - not_null
+      - unique
+  - name: dimproductsubcategory
+    data_tests:
+    - not_empty
+    columns:
+    - name: productsubcategorykey
+      data_tests:
+      - not_null
+      - unique
+    - name: productcategorykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimproductcategory')
+            field: productcategorykey
+  - name: dimpromotion
+    data_tests:
+    - not_empty
+    columns:
+    - name: promotionkey
+      data_tests:
+      - not_null
+      - unique
+  - name: dimreseller
+    data_tests:
+    - not_empty
+    columns:
+    - name: resellerkey
+      data_tests:
+      - not_null
+      - unique
+    - name: geographykey
+      data_tests:
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimgeography')
+            field: geographykey
+  - name: dimsalesterritory
+    data_tests:
+    - not_empty
+    columns:
+    - name: salesterritorykey
+      data_tests:
+      - not_null
+      - unique
+  - name: factinternetsales
+    data_tests:
+    - not_empty
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+          - salesordernumber
+          - salesorderlinenumber
+    columns:
+    - name: salesordernumber
+      data_tests:
+      - not_null
+    - name: salesorderlinenumber
+      data_tests:
+      - not_null
+    - name: productkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimproduct')
+            field: productkey
+    - name: orderdatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: duedatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: shipdatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: promotionkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimpromotion')
+            field: promotionkey
+    - name: currencykey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimcurrency')
+            field: currencykey
+    - name: salesterritorykey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimsalesterritory')
+            field: salesterritorykey
+    - name: customerkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimcustomer')
+            field: customerkey
+  - name: factresellersales
+    data_tests:
+    - not_empty
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+          - salesordernumber
+          - salesorderlinenumber
+    columns:
+    - name: salesordernumber
+      data_tests:
+      - not_null
+    - name: salesorderlinenumber
+      data_tests:
+      - not_null
+    - name: productkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimproduct')
+            field: productkey
+    - name: orderdatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: duedatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: shipdatekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimdate')
+            field: datekey
+    - name: promotionkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimpromotion')
+            field: promotionkey
+    - name: currencykey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimcurrency')
+            field: currencykey
+    - name: salesterritorykey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimsalesterritory')
+            field: salesterritorykey
+    - name: resellerkey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimreseller')
+            field: resellerkey
+    - name: employeekey
+      data_tests:
+      - not_null
+      - relationships:
+          arguments:
+            to: source('raw_adventureworks', 'dimemployee')
+            field: employeekey

@@ -13,5 +13,10 @@ clean-targets:
   - "dbt_packages"
 models:
   adventureworks_analytics:
+    # 🥈 Silver Layer: Materializes everything in models/staging as views in 'silver'
     staging:
       +materialized: view
+    # 🥇 Gold Layer: Materializes everything in models/marts as tables in a custom 'gold' schema
+    marts:
+      +materialized: table
+      +schema: gold_adventureworks

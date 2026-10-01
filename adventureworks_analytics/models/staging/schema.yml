@@ -78,6 +78,27 @@ models:
         data_tests:
           - no_unwanted_spaces
 
-
-
-
+  - name: stg_fact_internet_sales
+    description: "Internet sales at one row per sales order and line item."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - sales_order_number
+              - sales_order_line_item
+    columns:
+      - name: sales_order_number
+        data_tests:
+          - not_null
+      - name: sales_order_line_item
+        description: "Source salesorderlinenumber identifying the line within an order."
+        data_tests:
+          - not_null
+      - name: customer_key
+        description: "Required customer reference to the staged customer dimension."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customer')
+                field: customer_key
