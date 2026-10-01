@@ -1,18 +1,12 @@
-Welcome to your new dbt project!
+# AdventureWorks analytics
 
-### Using the starter project
+BigQuery staging and reporting marts for AdventureWorks sales data.
 
-Try running the following commands:
-- dbt run
-- dbt test
+- [Project documentation and operating guide](docs/PROJECT_GUIDE.md)
+- [Model lineage diagram and inventory](docs/LINEAGE.md)
+- [Interactive dbt documentation and lineage](target/static_index.html)
 
-
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
+Generate fresh documentation with `dbt docs generate --static`; open `target/static_index.html` or run `dbt docs serve --port 8080`.
 
 ### Source data quality
 
@@ -72,7 +66,8 @@ test also checks each product's identifier and category pair against staging.
 The grain is one row per `product_key`; `product_id` can repeat across historical
 versions. A null end date is allowed. Missing or blank colors and sizes become
 `Universal` and `N/A`. Costs and prices must be finite and nonnegative; below-cost
-pricing produces a warning for review rather than an automatic price correction.
+pricing produces a warning for review rather than an automatic price correction. Missing
+cost, price, and markup also produce warnings; the missing values remain null.
 
 Product validity ranges use inclusive dates. Within each `product_id`, versions
 are ordered by `valid_from_date`; each end date is the next start date minus one
@@ -93,3 +88,10 @@ Revenue must be finite and nonnegative, employee counts must be nonnegative, and
 opening years must be between 1 and the current year. All three fields are required.
 No arbitrary upper limit is imposed on revenue or company size. Postal codes remain
 text so international formats and leading zeros are preserved.
+
+### Sales territory validation
+
+Territory IDs and keys must be unique and non-null, regional mappings must match
+the source, and each country must map consistently to one corporate group. All
+three groups (`North America`, `Europe`, `Pacific`) must be represented. Values
+outside that list produce warnings, retaining visibility of the source `NA` placeholder.

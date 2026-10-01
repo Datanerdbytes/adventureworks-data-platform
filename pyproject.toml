@@ -3,14 +3,25 @@ name = "postgres-adventureworksdw"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "dash>=3.2,<4",
+    "dash-ag-grid>=33.3,<34",
+    "dash-auth>=2.3,<3",
+    "dbt>=2.0.6",
     "dbt-bigquery>=1.12.1",
+    "dbt-core>=1.12.5",
     "google-cloud-bigquery>=3.45.2",
     "google-cloud-bigquery-storage>=2.41.0",
     "pandas>=3.0.6",
     "pandas-gbq>=0.35.2",
+    "plotly>=6.3,<7",
     "psycopg2-binary>=2.9.13",
     "pyarrow>=25.0.1",
     "python-dotenv>=1.2.3",
     "sqlalchemy>=2.1.1",
     "sqlalchemy-bigquery>=1.17.2",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25,<27",
 ]
