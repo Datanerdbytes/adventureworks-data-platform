@@ -113,6 +113,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cachelib"
+version = "0.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/f4/b20875916b83f68775093554ce2544b12255396ba69abd93d8903cce0feb/cachelib-0.17.0.tar.gz", hash = "sha256:f3c7dc8d3c1132ab699681ffdf8a52d341d9425ac1401c538cf0b1d87b1677c8", size = 135529, upload-time = "2026-08-24T00:40:51.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/87/9110494f2816d3f2907ac9a0a0a5387f34bc4fa9755721ad09f0a2c99e9b/cachelib-0.17.0-py3-none-any.whl", hash = "sha256:f83909b6f78741c3a5d76d292d13bf24964ffb13e00ea1d18f92e20599766ce0", size = 28221, upload-time = "2026-08-24T00:40:50.237Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -474,6 +483,18 @@ wheels = [
 ]
 
 [[package]]
+name = "dash-bootstrap-components"
+version = "2.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dash" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/d4/5b7da808ff5acb3a6ca702f504d8ef05bc7d4c475b18dadefd783b1120c3/dash_bootstrap_components-2.0.4.tar.gz", hash = "sha256:c3206c0923774bbc6a6ddaa7822b8d9aa5326b0d3c1e7cd795cc975025fe2484", size = 115599, upload-time = "2025-08-20T19:42:09.449Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/38/1efeec8b4d741c09ccd169baf8a00c07a0176b58e418d4cd0c30dffedd22/dash_bootstrap_components-2.0.4-py3-none-any.whl", hash = "sha256:767cf0084586c1b2b614ccf50f79fe4525fdbbf8e3a161ed60016e584a14f5d1", size = 204044, upload-time = "2025-08-20T19:42:07.928Z" },
+]
+
+[[package]]
 name = "db-dtypes"
 version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -692,6 +713,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/26/00/35d85dcce6c57fdc871f3867d465d780f302a175ea360f62533f12b27e2b/flask-3.1.3.tar.gz", hash = "sha256:0ef0e52b8a9cd932855379197dd8f94047b359ca0a78695144304cb45f87c9eb", size = 759004, upload-time = "2026-02-19T05:00:57.678Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/9c/34f6962f9b9e9c71f6e5ed806e0d0ff03c9d1b0b2340088a0cf4bce09b18/flask-3.1.3-py3-none-any.whl", hash = "sha256:f4bcbefc124291925f1a26446da31a5178f9483862233b23c0c96a20701f670c", size = 103424, upload-time = "2026-02-19T05:00:56.027Z" },
+]
+
+[[package]]
+name = "flask-caching"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cachelib" },
+    { name = "flask" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a2/74/37c0cfc97444bc639a2854808c55ef61266c3637ab0a64c794b9f6ea1649/flask_caching-2.5.1.tar.gz", hash = "sha256:f75b451fde3faac0e278da72263818134deca8c4ba6bb07b9b3b238991368dae", size = 219102, upload-time = "2026-09-04T18:59:15.541Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/62/e22db0afb98b481878f22c0cec125d29b33948863b4e3f4a083e610c40c7/flask_caching-2.5.1-py3-none-any.whl", hash = "sha256:a8591b0315f033d1f10ba67e318b82b3179e548306195ec08e8f0c5f8ef287bf", size = 35082, upload-time = "2026-09-04T18:59:13.862Z" },
 ]
 
 [[package]]
@@ -1660,9 +1694,11 @@ dependencies = [
     { name = "dash" },
     { name = "dash-ag-grid" },
     { name = "dash-auth" },
+    { name = "dash-bootstrap-components" },
     { name = "dbt" },
     { name = "dbt-bigquery" },
     { name = "dbt-core" },
+    { name = "flask-caching" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-bigquery-storage" },
     { name = "pandas" },
@@ -1685,9 +1721,11 @@ requires-dist = [
     { name = "dash", specifier = ">=3.2,<4" },
     { name = "dash-ag-grid", specifier = ">=33.3,<34" },
     { name = "dash-auth", specifier = ">=2.3,<3" },
+    { name = "dash-bootstrap-components", specifier = ">=2.0,<3" },
     { name = "dbt", specifier = ">=2.0.6" },
     { name = "dbt-bigquery", specifier = ">=1.12.1" },
     { name = "dbt-core", specifier = ">=1.12.5" },
+    { name = "flask-caching", specifier = ">=2.3,<3" },
     { name = "google-cloud-bigquery", specifier = ">=3.45.2" },
     { name = "google-cloud-bigquery-storage", specifier = ">=2.41.0" },
     { name = "pandas", specifier = ">=3.0.6" },

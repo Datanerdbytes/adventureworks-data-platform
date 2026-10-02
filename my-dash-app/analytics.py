@@ -9,6 +9,7 @@ from dash import Input, Output, callback, dcc, html
 from components import card, field, graph, grid, heading, metric
 from data import grid_options
 from theme import TOKENS, style_figure
+from revenue_kpis import kpi_cards
 
 REPORTS = {
     "executive": (
@@ -95,6 +96,30 @@ def report_layout(kind):
                 description,
                 dcc.Link("← Dashboard overview", href="/dashboard", className="button"),
             ),
+            *(
+                [
+                    html.H2("Warehouse KPIs", className="warehouse-kpi-heading"),
+                    dcc.Store(id="executive-kpi-load", data=True),
+                    dcc.Loading(
+                        html.Div(
+                            kpi_cards(note="Loading warehouse totals…"),
+                            id="executive-live-kpis",
+                            className="metrics executive-kpis",
+                        ),
+                        type="circle",
+                    ),
+                    html.P(id="executive-kpi-status", role="status", className="muted"),
+                    html.H2(
+                        "Sample charts and detail", className="warehouse-kpi-heading"
+                    ),
+                    html.P(
+                        "The filters below apply only to the synthetic charts and detail table. Warehouse KPIs above cover all available years and regions.",
+                        className="muted",
+                    ),
+                ]
+                if kind == "executive"
+                else []
+            ),
             html.Div(
                 [
                     field(
@@ -122,7 +147,9 @@ def report_layout(kind):
                 ],
                 className="filters",
             ),
-            html.Div(id=f"{kind}-metrics", className="metrics"),
+            html.Div(
+                id=f"{kind}-metrics", className="metrics", hidden=kind == "executive"
+            ),
             html.Div(
                 [
                     card(

@@ -267,3 +267,16 @@ dd {
     --ag-font-size: 12px;
   }
 }
+
+/* The dropdown owns the border; its internal search input stays plain. */
+.field .Select input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+  padding: 0;
+}
+.field .Select.is-focused > .Select-control {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgb(34 116 181 / 20%);
+}

@@ -1,9 +1,9 @@
 # AdventureWorks Analytics — local demo
 
 A four-page Dash console with a collapsible sidebar, responsive mobile drawer,
-Plotly charts, and searchable AG Grid tables. All records are deterministic,
-synthetic examples from September 2026. Refresh updates the display timestamp,
-not the fixture period. No database, dbt jobs, or network data loaders are used. The public landing
+Plotly charts, and searchable AG Grid tables. Charts and detail tables use deterministic synthetic examples. Executive KPI
+cards read the BigQuery revenue mart and sales fact. Refresh updates the display timestamp,
+not the fixture period. No ingestion or dbt jobs are executed. The five Executive KPIs make a read-only BigQuery query; other displays remain synthetic. The public landing
 page lives at `/`; the workspace is protected by temporary `dash-auth` HTTP
 Basic authentication. Deployment and Supabase integration remain deferred.
 
@@ -21,8 +21,10 @@ Open http://localhost:8050/ for the public landing page. Before signing in, set
 environment, then restart the app. Runtime values take precedence. Choose your
 own credentials; there are no default accounts and no credentials are committed.
 
-“Sign in” and “Open workspace” open `/dashboard` and use the browser's native
-username/password prompt. Missing configuration returns 503; invalid credentials
+“Sign in” and “Open workspace” open `/dashboard`, which redirects browser
+navigation to an in-page `/login` form. This works in embedded previews that do
+not support native Basic Auth prompts. Explicit HTTP Basic Auth requests remain
+supported. Missing configuration returns 503; invalid credentials
 return 401. Every dashboard page, asset, layout endpoint, and callback requires
 valid credentials. A caller-supplied public pathname cannot bypass protection.
 Only `/`, `/theme.css`, and `/assets/landing.css` are public GET/HEAD endpoints.
@@ -96,3 +98,46 @@ fixture for 2025–2026; no BigQuery queries run. Amounts are USD and illustrati
 Wholesale uses reseller-channel orders; demographics deduplicate Internet-channel
 customers. Growth compares both years but uses the selected year for detail and
 month-over-month metrics, including the prior December baseline when available.
+
+
+## Executive warehouse filters and metrics
+
+`/dashboard/executive` uses four page-wide filter groups: calendar year/quarter,
+sales channel, product category, and dependent product subcategory. Defaults are
+All. Options come from the revenue mart (currently calendar years 2010–2014);
+these are calendar periods, not fiscal periods. Choosing Bikes narrows the
+subcategory choices to Mountain Bikes, Road Bikes, and Touring Bikes. An invalid
+prior subcategory resets to All when its parent category changes.
+
+All five KPI cards, both charts, and the product-detail table use the same
+parameterized warehouse selection. No sample values remain on this page. Other
+report pages keep their existing synthetic fixtures and filters.
+
+Revenue and profit sum the filtered `revenue_sales_performance` mart. Margin is
+combined profit / revenue × 100. Orders count distinct channel/order pairs from
+`fct_sales` joined to `dim_date` and `dim_product`, using the same filters and
+Unknown-product fallback as the dbt model. AOV divides selected revenue by
+purchasing orders; with product filters it represents selected-product spend per
+order, not the entire basket. Product-level order counts are never summed.
+
+The query uses ADC, `GBQ_PROJECT_ID`, and optional `BQ_ANALYTICS_DATASET` (default
+`gold_adventureworks`). Aggregate queries are read-only, capped at 100 MiB billed,
+and cached for 60 seconds per project, dataset, and full filter tuple. Catalog
+options are cached for five minutes. No data query runs at import or in layouts.
+Empty selections show zero revenue/profit/orders and undefined ratios as em
+dashes. Query failures clear the old results and show an error instead of demo
+values. Reload to retry. Tests use mocks for warehouse access.
+
+
+### Embedded preview sign-in
+
+The `/login` form checks the same configured credentials and establishes a signed,
+HttpOnly, SameSite=Lax session lasting up to eight hours. POST requires a CSRF
+token and an exact Origin match. Credentials never enter the cookie. Changing
+configured credentials invalidates existing sessions. Missing configuration and
+unauthenticated data/callback requests still fail closed.
+
+Set `FLASK_SECRET_KEY` in the runtime environment for a stable signing key across
+restarts/workers. Without it, the local single-process server generates a random
+key at startup, so restarting requires signing in again. Secure cookies are
+used when `AUTH_APP_ORIGIN` is HTTPS; HTTP is intended only for local development.

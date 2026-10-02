@@ -892,3 +892,65 @@ body.landing-page {
     opacity: 1;
   }
 }
+
+.login-shell {
+  width: min(440px, calc(100% - 32px));
+  margin: 8vh auto;
+}
+.login-home {
+  display: inline-block;
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.login-card {
+  padding: 32px;
+  margin-top: 20px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 16px 50px #346df509;
+}
+.login-card h1 {
+  font-size: 30px;
+  letter-spacing: -1px;
+  margin: 0 0 12px;
+}
+.login-card p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+.login-card label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.login-card input:not([type="hidden"]) {
+  padding: 12px;
+  min-height: 46px;
+  font: inherit;
+  border: 1px solid #aebbd0;
+  border-radius: 7px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+.login-card input:focus-visible,
+.login-card button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+}
+.login-card button {
+  cursor: pointer;
+  font-family: inherit;
+}
+.login-card .login-error {
+  color: #a42632;
+  background: #fff1f2;
+  padding: 12px;
+  border-radius: 6px;
+}

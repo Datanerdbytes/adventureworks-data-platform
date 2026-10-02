@@ -125,6 +125,8 @@ Postgres-AdventureWorksDW/
 - Avoid blocking `time.sleep` loops in callbacks. Use `dcc.Interval` for asynchronous polling or an external task queue for long-running work.
 
 ## 6. Layout and Styling
+- Prefer Dash Bootstrap Components (`import dash_bootstrap_components as dbc`) for styled UI elements such as cards, badges, buttons, menus, alerts, and modals. Use their built-in properties before creating custom HTML equivalents.
+- Keep Bootstrap styling aligned with `design-system/adventureworks-analytics/MASTER.md` and relevant page overrides. Reuse the app's stylesheet setup; when Bootstrap classes are needed, ensure a Bootstrap 5-compatible stylesheet is loaded once and check for conflicts with existing dashboard styles.
 - Put core layout styles, grids, and structural overrides in CSS files under `assets/`.
 - Use a shared `theme.py` or `theme.js` for color, spacing, and font constants.
 - Use inline Python style dictionaries only for dynamic, runtime-computed styling. Avoid static inline style blocks.
@@ -132,7 +134,7 @@ Postgres-AdventureWorksDW/
 
 ## 7. Charts and Components
 - Prefer `plotly.express`; use `plotly.graph_objects` when fine-grained control is needed.
-- Prefer component libraries in this order: Dash Design Kit when available, Dash Core Components with Dash HTML Components, Dash Mantine Components, then Dash Bootstrap Components when required. Minimize the number of libraries used.
+- Use Dash Bootstrap Components as the preferred styled component library. Continue using Dash Core Components for graphs, stores, routing, and controls where appropriate, Dash HTML Components for semantic structure, and Dash AgGrid for tables. Avoid introducing another UI component library when the existing stack supports the requirement.
 - Do not use `dash_table.DataTable`; use `dash.AgGrid`.
 - When creating `dag.AgGrid`, set these properties:
 
@@ -162,6 +164,8 @@ defaultColDef={"filter": True, "sortable": True}
 - Never put secrets, API keys, or credentials in layout code or `dcc.Store`. Use environment variables and server-side logic.
 - Never run destructive commands against production resources without explicit, multi-turn user confirmation.
 - For specialized UI additions, check `.agents/skills/` for a relevant task capsule before implementing.
+- For interface design, implementation, review, or fixes, read and apply [ui-ux-pro-max](/Users/roelsomido/.codex/skills/ui-ux-pro-max/SKILL.md). Use it for layout, components, accessibility, responsive behavior, typography, colors, charts, and interactions; skip purely non-visual backend work. Read the existing `design-system/adventureworks-analytics/MASTER.md` and relevant page overrides before making visual decisions, and keep implementation aligned with this project's Dash stack.
+- When adding or adapting the five sales filters (calendar year, quarter, sales channel, product category, and dependent product subcategory) in Dash reports, read and apply [dash-sales-filters](/Users/roelsomido/.codex/skills/dash-sales-filters/SKILL.md). This globally installed skill covers shared filter behavior, query consistency, browser state, and styling; adapt its field mappings to the target report.
 
 ## 10. Production Safety
 - The workspace is connected to the production Google Cloud environment `quantum-echo-data-eng-prod`.

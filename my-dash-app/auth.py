@@ -8,11 +8,14 @@ import base64
 import binascii
 import hmac
 import os
+import secrets
+from datetime import timedelta
+from urllib.parse import urlencode
 from pathlib import Path
 
 from dash_auth import BasicAuth
 from dotenv import load_dotenv
-from flask import Response, g, request
+from flask import Response, g, request, session, redirect, render_template
 
 PUBLIC_PATHS = frozenset({"/", "/theme.css", "/assets/landing.css"})
 
@@ -51,12 +54,95 @@ class WorkspaceBasicAuth(BasicAuth):
 def install_auth(server):
     load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
     server.config.update(
+        SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=os.environ.get("AUTH_APP_ORIGIN", "").startswith(
+            "https://"
+        ),
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+        SESSION_REFRESH_EACH_REQUEST=False,
         DASH_AUTH_USERNAME=os.environ.get("DASH_AUTH_USERNAME", ""),
         DASH_AUTH_PASSWORD=os.environ.get("DASH_AUTH_PASSWORD", ""),
     )
 
+    def credential_version():
+        value = (
+            server.config["DASH_AUTH_USERNAME"]
+            + "\0"
+            + server.config["DASH_AUTH_PASSWORD"]
+        )
+        return hmac.new(
+            server.secret_key.encode(), value.encode(), "sha256"
+        ).hexdigest()
+
+    def origin_matches():
+        return request.headers.get("Origin") == os.environ.get(
+            "AUTH_APP_ORIGIN", request.host_url.rstrip("/")
+        )
+
+    def next_page(value):
+        allowed = {
+            "/dashboard",
+            "/monitoring",
+            "/tables",
+            "/settings",
+            "/dashboard/executive",
+            "/dashboard/wholesale",
+            "/dashboard/growth",
+            "/dashboard/customers",
+        }
+        return value if value in allowed else "/dashboard"
+
+    @server.route("/login", methods=["GET", "POST"])
+    def login():
+        destination = next_page(request.values.get("next"))
+        error = None
+        status = 200
+        if request.method == "POST":
+            csrf = request.form.get("csrf", "")
+            if (
+                not origin_matches()
+                or not csrf
+                or not hmac.compare_digest(csrf, session.get("login_csrf", ""))
+            ):
+                return Response(
+                    "Invalid sign-in request. Reload the sign-in page and retry.",
+                    status=403,
+                )
+            if (
+                not server.config["DASH_AUTH_USERNAME"]
+                or not server.config["DASH_AUTH_PASSWORD"]
+            ):
+                error, status = (
+                    "Workspace sign-in is not configured on the server.",
+                    503,
+                )
+            elif server.extensions["workspace_auth"]._auth_func(
+                request.form.get("username", ""), request.form.get("password", "")
+            ):
+                session.clear()
+                session.permanent = True
+                session["workspace_user"] = server.config["DASH_AUTH_USERNAME"]
+                session["credential_version"] = credential_version()
+                return redirect(destination, code=303)
+            else:
+                error, status = (
+                    "The username or password is incorrect. Please try again.",
+                    401,
+                )
+        session["login_csrf"] = secrets.token_urlsafe(32)
+        return (
+            render_template(
+                "login.html", csrf=session["login_csrf"], next=destination, error=error
+            ),
+            status,
+        )
+
     @server.before_request
     def protect_workspace():
+        if request.path == "/login" and request.method in ("GET", "HEAD", "POST"):
+            return None
         if request.path in PUBLIC_PATHS and request.method in ("GET", "HEAD"):
             return None
         if not all(
@@ -69,7 +155,22 @@ def install_auth(server):
                 mimetype="text/plain",
             )
         auth = server.extensions["workspace_auth"]
-        if not auth.is_authorized():
+        session_ok = session.get("workspace_user") == server.config[
+            "DASH_AUTH_USERNAME"
+        ] and hmac.compare_digest(
+            session.get("credential_version", ""), credential_version()
+        )
+        if session_ok:
+            g.workspace_username = session["workspace_user"]
+        elif not auth.is_authorized():
+            if (
+                request.method == "GET"
+                and "text/html" in request.headers.get("Accept", "")
+                and not request.path.startswith(("/_dash", "/assets/", "/theme.css"))
+            ):
+                return redirect(
+                    "/login?" + urlencode({"next": next_page(request.path)})
+                )
             return auth.login_request()
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             origin = request.headers.get("Origin")

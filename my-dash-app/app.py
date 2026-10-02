@@ -5,10 +5,12 @@ from flask import Flask, Response, g, has_request_context, render_template
 from auth import install_auth, configure_auth
 from components import icon
 from analytics import REPORTS
+from revenue_kpis import init_kpi_cache
 from theme import css_tokens
 
 server = Flask(__name__)
 install_auth(server)
+init_kpi_cache(server)
 
 
 @server.get("/")
@@ -89,7 +91,11 @@ def serve_layout():
                     html.Div(
                         [
                             html.Span("Local workspace", className="workspace-label"),
-                            html.Span("Demo data", className="badge demo"),
+                            html.Span(
+                                "Demo data",
+                                id="workspace-data-label",
+                                className="badge demo",
+                            ),
                             html.Span(
                                 "AW",
                                 className="avatar",
@@ -232,7 +238,7 @@ def serve_layout():
                                                 },
                                             ),
                                             html.P(
-                                                "Browser-managed sign-in. To switch accounts, use a separate private browsing session.",
+                                                "Signed in with your configured workspace credentials.",
                                                 className="account-hint",
                                             ),
                                         ],
@@ -321,6 +327,12 @@ clientside_callback(
     """function(collapsed) {window.awSidebar?.apply(!!collapsed); return !!collapsed;}""",
     Output("sidebar-sync", "children"),
     Input("sidebar-preference", "data"),
+)
+
+clientside_callback(
+    "function(path) { return path === '/dashboard/executive' ? 'Warehouse data' : 'Demo data'; }",
+    Output("workspace-data-label", "children"),
+    Input("app-location", "pathname"),
 )
 
 if __name__ == "__main__":
