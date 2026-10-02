@@ -52,6 +52,15 @@ models:
                 to: ref('stg_dim_date')
                 field: date_key
 
+      - name: sales_territory_key
+        description: Order sales territory preserved from each channel's staged fact.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_sales_territory')
+                field: sales_territory_key
+
       - name: customer_key
         description: "Required for Internet sales; null for Reseller sales, enforced by the model-level test."
         data_tests:

@@ -1,62 +1,87 @@
 # Model lineage
 
-Generated from the dbt manifest on 2026-10-02. Arrows show SQL build dependencies; test-only references and reporting joins are excluded.
+Generated from a locally parsed dbt manifest on 2026-10-02. Arrows show SQL build
+dependencies, excluding test-only references. This is source-code lineage, not proof
+that the current warehouse relations have been rebuilt.
 
 ```mermaid
 flowchart LR
-  subgraph Raw_sources["Raw sources"]
-    n0["dimcurrency"]
-    n1["dimcustomer"]
-    n2["dimdate"]
-    n3["dimemployee"]
-    n4["dimgeography"]
-    n5["dimproduct"]
-    n6["dimproductcategory"]
-    n7["dimproductsubcategory"]
-    n8["dimpromotion"]
-    n9["dimreseller"]
-    n10["dimsalesterritory"]
-    n11["factinternetsales"]
-    n12["factresellersales"]
+  subgraph g0["Raw sources"]
+    n16["dimcurrency"]
+    n17["dimcustomer"]
+    n18["dimdate"]
+    n19["dimemployee"]
+    n20["dimgeography"]
+    n21["dimproduct"]
+    n22["dimproductcategory"]
+    n23["dimproductsubcategory"]
+    n24["dimpromotion"]
+    n25["dimreseller"]
+    n26["dimsalesterritory"]
+    n27["factinternetsales"]
+    n28["factresellersales"]
   end
-  subgraph Staging["Staging"]
-    n13["stg_customer"]
-    n14["stg_product"]
-    n15["stg_fact_reseller_sales"]
-    n16["stg_dim_date"]
-    n17["stg_fact_internet_sales"]
+  subgraph g1["Staging"]
+    n11["stg_customer"]
+    n12["stg_dim_date"]
+    n13["stg_fact_internet_sales"]
+    n14["stg_fact_reseller_sales"]
+    n15["stg_product"]
   end
-  subgraph Business_marts["Business marts"]
-    n18["dim_product"]
-    n19["fct_sales"]
-    n20["dim_customer"]
-    n21["dim_reseller"]
-    n22["dim_date"]
-    n23["dim_sales_territory"]
+  subgraph g2["Core marts"]
+    n0["dim_customer"]
+    n1["dim_date"]
+    n2["dim_product"]
+    n3["dim_reseller"]
+    n4["dim_sales_territory"]
+    n5["fct_sales"]
   end
-  n1 --> n13
-  n6 --> n14
-  n5 --> n14
-  n7 --> n14
-  n12 --> n15
-  n2 --> n16
-  n11 --> n17
-  n14 --> n18
-  n17 --> n19
-  n15 --> n19
-  n4 --> n20
-  n13 --> n20
-  n4 --> n21
-  n9 --> n21
-  n16 --> n22
-  n10 --> n23
+  subgraph g3["Shared enrichment (ephemeral)"]
+    n6["int_product_sales"]
+  end
+  subgraph g4["Reporting models"]
+    n7["marts_demographic_regional_insights"]
+    n8["marts_growth_trends"]
+    n9["marts_product_sales_performance"]
+    n10["revenue_sales_performance"]
+  end
+  n11 --> n0
+  n20 --> n0
+  n12 --> n1
+  n15 --> n2
+  n20 --> n3
+  n25 --> n3
+  n26 --> n4
+  n13 --> n5
+  n14 --> n5
+  n2 --> n6
+  n5 --> n6
+  n0 --> n7
+  n4 --> n7
+  n5 --> n7
+  n1 --> n8
+  n5 --> n8
+  n6 --> n9
+  n1 --> n10
+  n6 --> n10
+  n17 --> n11
+  n18 --> n12
+  n27 --> n13
+  n28 --> n14
+  n21 --> n15
+  n22 --> n15
+  n23 --> n15
 ```
 
-Some raw sources have no model edge: they are registered for validation or future use. Source and relationship tests remain visible in the interactive dbt graph.
+Registered sources without model edges are retained for validation or future use.
+`int_product_sales` is compiled into each consumer, not materialized as a table.
 
 ## Model inventory
 
-| Model | Materialization | Schema | Direct inputs |
+Schema values below reflect the selected local profile; profile schemas can differ
+between environments. Ephemeral models have no warehouse relation.
+
+| Model | Materialization | Schema | Direct SQL inputs |
 | --- | --- | --- | --- |
 | dim_customer | table | gold_adventureworks | dimgeography, stg_customer |
 | dim_date | table | gold_adventureworks | stg_dim_date |
@@ -64,26 +89,43 @@ Some raw sources have no model edge: they are registered for validation or futur
 | dim_reseller | table | gold_adventureworks | dimgeography, dimreseller |
 | dim_sales_territory | table | gold_adventureworks | dimsalesterritory |
 | fct_sales | table | gold_adventureworks | stg_fact_internet_sales, stg_fact_reseller_sales |
+| int_product_sales | ephemeral | — (no relation) | dim_product, fct_sales |
+| marts_demographic_regional_insights | table | gold_adventureworks | dim_customer, dim_sales_territory, fct_sales |
+| marts_growth_trends | view | silver_adventureworks | dim_date, fct_sales |
+| marts_product_sales_performance | table | gold_adventureworks | int_product_sales |
+| revenue_sales_performance | table | gold_adventureworks | dim_date, int_product_sales |
 | stg_customer | view | silver_adventureworks | dimcustomer |
 | stg_dim_date | view | silver_adventureworks | dimdate |
 | stg_fact_internet_sales | table | silver_adventureworks | factinternetsales |
 | stg_fact_reseller_sales | table | silver_adventureworks | factresellersales |
-| stg_product | view | silver_adventureworks | dimproductcategory, dimproduct, dimproductsubcategory |
-
+| stg_product | view | silver_adventureworks | dimproduct, dimproductcategory, dimproductsubcategory |
 
 ## Reporting joins
 
-These are logical reporting joins, not dbt build edges.
-
 | Fact field | Dimension field | Notes |
 | --- | --- | --- |
-| product_key | dim_product.product_key | Join by version key, not repeated product_id; mart contains finished goods only. |
+| product_key | dim_product.product_key | Historical version key; finished goods only. Shared enrichment uses a left join to retain unmatched sales. |
 | order_date_key | dim_date.date_key | Order-date role. |
 | customer_key | dim_customer.customer_key | Internet channel. |
 | reseller_key | dim_reseller.reseller_key | Reseller channel. |
+| sales_territory_key | dim_sales_territory.sales_territory_key | Preserved from both staged facts; used by demographics. |
 
-`fct_sales` does not expose sales_territory_key, so it has no direct join to `dim_sales_territory`. Its current referential tests point to staging dimensions or raw reseller, rather than these mart dimensions.
+Fact relationship tests do not mean the fact SQL joins those dimensions. The diagram
+does include the actual joins performed by shared enrichment and reporting models.
+
+## Reporting changes
+
+- `marts_product_sales_performance` replaces `marts_product_inventory_analytics`
+  at product-key/channel grain. The old warehouse relation requires separate retirement.
+- The monthly revenue model retains its existing grain and now shares product enrichment.
+- Growth remains a profile-schema view because its SQL is outside `models/marts/`.
+- Product-key coverage tests flag unknown dimension matches without removing sales.
+
+See [reporting grains and validation](PROJECT_GUIDE.md) and
+[product sales migration and metric rules](PRODUCT_SALES.md).
 
 ## Refresh
 
-Regenerate the interactive graph with `dbt docs generate --static`. Update this diagram if model dependencies change.
+Regenerate this snapshot after dependency changes. For the interactive graph, use
+the [offline documentation workflow](PROJECT_GUIDE.md#selective-rebuilds-and-offline-documentation)
+or `dbt docs generate --static` for a warehouse-backed catalog.

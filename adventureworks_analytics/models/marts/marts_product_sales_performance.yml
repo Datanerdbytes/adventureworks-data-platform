@@ -1,0 +1,110 @@
+version: 2
+models:
+- name: marts_product_sales_performance
+  description: All-time sales and margins at product_key and channel grain. Historical product versions
+    stay separate. Unmatched sales are retained with Unknown attributes and their original product
+    key. Shared sales-line enrichment is provided by int_product_sales, also used by the monthly
+    revenue mart. Monetary totals retain source precision; format them at display time. This model
+    does not measure stock levels or inventory turnover.
+  data_tests:
+  - not_empty
+  - dbt_utils.unique_combination_of_columns:
+      arguments:
+        combination_of_columns:
+        - product_key
+        - sales_channel
+  - product_sales_matches_fact
+  columns:
+  - name: product_key
+    description: Original sales product key, including keys missing from dim_product.
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('dim_product')
+          field: product_key
+  - name: category_name
+    data_tests:
+    - not_null
+  - name: subcategory_name
+    data_tests:
+    - not_null
+  - name: product_name
+    data_tests:
+    - not_null
+  - name: model_name
+    description: Nullable product model name, preserved from dim_product.
+  - name: product_color
+    data_tests:
+    - not_null
+  - name: product_size
+    data_tests:
+    - not_null
+  - name: product_line
+    data_tests:
+    - not_null
+    - accepted_values:
+        arguments:
+          values:
+          - Mountain
+          - Road
+          - Touring
+          - Components
+          - Unknown
+  - name: product_class
+    data_tests:
+    - not_null
+    - accepted_values:
+        arguments:
+          values:
+          - Low
+          - Medium
+          - High
+          - Unknown
+  - name: product_style
+    data_tests:
+    - not_null
+    - accepted_values:
+        arguments:
+          values:
+          - Universal
+          - Women
+          - Men
+          - Unknown
+  - name: sales_channel
+    data_tests:
+    - not_null
+    - accepted_values:
+        arguments:
+          values:
+          - Internet
+          - Reseller
+  - name: product_purchasing_orders_count
+    description: Distinct orders containing this product key in this channel. Non-additive across
+      products. Calculate category or overall distinct orders from fct_sales at the requested grain,
+      separated by channel.
+    data_tests:
+    - not_null
+    - dbt_utils.expression_is_true:
+        arguments:
+          expression: '> 0'
+  - name: total_units_sold
+    data_tests:
+    - not_null
+  - name: gross_sales_revenue
+    description: Additive monetary total at full source precision; round only for display.
+    data_tests:
+    - not_null
+  - name: aggregated_production_cost
+    description: Additive monetary total at full source precision; round only for display.
+    data_tests:
+    - not_null
+  - name: generated_gross_profit
+    description: Unrounded revenue minus unrounded product cost. Negative profit is valid. For rollups,
+      sum profit and revenue and recompute margin; do not average percentages.
+    data_tests:
+    - not_null
+  - name: realized_profit_margin_percentage
+    description: Profit divided by unrounded revenue times 100, rounded to two decimals. Null when
+      unrounded revenue is zero; negative margins are valid. Recompute from underlying amounts for
+      rollups instead of averaging percentages.

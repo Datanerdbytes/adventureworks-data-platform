@@ -43,8 +43,30 @@
     if (open) document.querySelector("#mobile-close")?.focus();
     else if (restore) document.querySelector("#mobile-menu")?.focus();
   }
-  window.awSidebar = { apply };
+  function submenu(open) {
+    const panel = document.querySelector("#dashboard-submenu");
+    if (panel) panel.hidden = !open;
+    document
+      .querySelector("#dashboard-submenu-toggle")
+      ?.setAttribute("aria-expanded", String(open));
+  }
+  function navigate(path) {
+    if ((path || "").startsWith("/dashboard/")) submenu(true);
+    document.querySelectorAll(".sidebar-navigation a").forEach((link) => {
+      const active = link.getAttribute("href") === path;
+      if (active) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+  }
+  window.awSidebar = { apply, navigate };
   document.addEventListener("click", (e) => {
+    if (e.target.closest("#dashboard-submenu-toggle")) {
+      if (collapsed && !mobile()) {
+        apply(false);
+        window.dash_clientside.set_props("sidebar-preference", { data: false });
+        submenu(true);
+      } else submenu(document.querySelector("#dashboard-submenu")?.hidden);
+    }
     if (e.target.closest("#account-toggle")) {
       account(document.querySelector("#account-menu")?.hidden);
     } else if (!e.target.closest("#account-menu")) {

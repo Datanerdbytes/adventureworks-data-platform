@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: marts_growth_trends
+    description: >-
+      Sales totals at calendar year, month, channel, and weekday/weekend segment
+      grain. Only periods and segments with sales are present. Despite the internal
+      daily aggregate name, this is a monthly segmented summary, with no moving
+      average or period-over-period growth calculation. Revenue is rounded per row.
+    data_tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - calendar_year
+              - month_number
+              - sales_channel
+              - day_type_segment
+      - growth_trends_matches_fact
+      - dbt_utils.expression_is_true:
+          name: growth_trends_quarter_matches_month
+          arguments:
+            expression: >-
+              calendar_quarter_name = concat('Q', cast(cast(ceil(month_number / 3.0) as int64) as string))
+      - dbt_utils.expression_is_true:
+          name: growth_trends_month_name_matches_number
+          arguments:
+            expression: >-
+              month_name = format_date('%B', date(2000, month_number, 1))
+    columns:
+      - name: calendar_year
+        data_tests:
+          - not_null
+      - name: calendar_quarter_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Q1', 'Q2', 'Q3', 'Q4']
+      - name: month_number
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                quote: false
+      - name: month_name
+        data_tests:
+          - not_null
+      - name: sales_channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Internet', 'Reseller']
+      - name: day_type_segment
+        description: Weekend or Weekday, based on the order date's calendar flag.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Weekday', 'Weekend']
+      - name: periodic_gross_revenue
+        description: >-
+          Sum of fact sales_amount for the segment, rounded to two decimals.
+          Summed segments can differ from rounding the complete fact total once.
+        data_tests:
+          - not_null
+      - name: periodic_units_sold
+        data_tests:
+          - not_null
+      - name: periodic_orders_count
+        description: >-
+          Distinct sales_order_number within each month, channel, and day segment.
+          Rollups assume each order belongs to a single order date and channel.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: '> 0'
+      - name: transaction_aov
+        description: >-
+          Unrounded segment revenue divided by distinct segment orders, then rounded
+          to two decimals. This is a period AOV, not a moving average. Recalculate
+          from revenue and distinct orders at the desired grain instead of averaging
+          this column. Zero-revenue orders have zero AOV.
+        data_tests:
+          - not_null

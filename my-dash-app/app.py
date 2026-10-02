@@ -4,6 +4,7 @@ from dash import Dash, Input, Output, clientside_callback, dcc, html, page_conta
 from flask import Flask, Response, g, has_request_context, render_template
 from auth import install_auth, configure_auth
 from components import icon
+from analytics import REPORTS
 from theme import css_tokens
 
 server = Flask(__name__)
@@ -131,15 +132,64 @@ def serve_layout():
                     html.P("PROJECT", className="eyebrow nav-label"),
                     html.Nav(
                         [
-                            dcc.Link(
-                                [icon(key), html.Span(label, className="nav-label")],
-                                href=f"/{key}",
-                                id=f"nav-{key}",
-                                className="nav-link",
-                                title=label,
-                            )
-                            for key, label in links
+                            html.Div(
+                                [
+                                    dcc.Link(
+                                        [
+                                            icon("dashboard"),
+                                            html.Span(
+                                                "Dashboard", className="nav-label"
+                                            ),
+                                        ],
+                                        href="/dashboard",
+                                        id="nav-dashboard",
+                                        className="nav-link",
+                                        title="Dashboard",
+                                    ),
+                                    html.Button(
+                                        "⌄",
+                                        id="dashboard-submenu-toggle",
+                                        className="submenu-toggle",
+                                        title="Dashboard reports",
+                                        **{
+                                            "aria-label": "Toggle dashboard reports",
+                                            "aria-expanded": "false",
+                                            "aria-controls": "dashboard-submenu",
+                                        },
+                                    ),
+                                ],
+                                className="dashboard-nav-row",
+                            ),
+                            html.Div(
+                                [
+                                    dcc.Link(
+                                        label,
+                                        href=f"/dashboard/{kind}",
+                                        className="subnav-link",
+                                        title=title,
+                                        id=f"nav-report-{kind}",
+                                    )
+                                    for kind, (title, label, _) in REPORTS.items()
+                                ],
+                                id="dashboard-submenu",
+                                hidden=True,
+                            ),
+                            *[
+                                dcc.Link(
+                                    [
+                                        icon(key),
+                                        html.Span(label, className="nav-label"),
+                                    ],
+                                    href=f"/{key}",
+                                    id=f"nav-{key}",
+                                    className="nav-link",
+                                    title=label,
+                                )
+                                for key, label in links
+                                if key != "dashboard"
+                            ],
                         ],
+                        className="sidebar-navigation",
                         **{"aria-label": "Main navigation"},
                     ),
                     html.Div(
@@ -254,8 +304,11 @@ clientside_callback(
     """function(path) {
     const keys = ['dashboard','monitoring','tables','settings'];
     const key = (path || '').split('/')[1];
+    const reports = {executive:'Revenue & Sales',wholesale:'Wholesale & Resellers',growth:'Growth & Seasonality',customers:'Customers & Regions'};
+    const report = reports[(path || '').split('/')[2]];
+    window.awSidebar?.navigate(path);
     return [...keys.map(k => k === key ? 'nav-link active' : 'nav-link'),
-      keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'];
+      report && key === 'dashboard' ? 'Dashboard / ' + report : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found')];
 }""",
     *[
         Output(f"nav-{key}", "className")

@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: revenue_sales_performance
+    description: >-
+      Monthly sales by channel, category, subcategory, and product name. Historical
+      product versions with the same name and hierarchy are combined. Sales missing
+      a finished-goods dimension match remain under an Unknown category and a
+      product-key-specific fallback name. Financial totals retain source precision.
+    data_tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - calendar_year
+              - calendar_quarter_name
+              - month_name
+              - sales_channel
+              - product_category
+              - product_subcategory
+              - product_name
+    columns:
+      - name: calendar_year
+        data_tests: [not_null]
+      - name: calendar_quarter_name
+        data_tests: [not_null]
+      - name: month_name
+        data_tests: [not_null]
+      - name: sales_channel
+        data_tests: [not_null]
+      - name: product_name
+        data_tests: [not_null]
+      - name: product_purchasing_orders_count
+        description: >-
+          Distinct orders containing this product within this month and channel.
+          Non-additive across products and hierarchy groups: one order may appear
+          in several rows. Query fct_sales for distinct orders at broader grains.
+        data_tests: [not_null]
+      - name: product_revenue_per_purchasing_order
+        description: >-
+          This product's revenue divided by orders containing it, rounded to two
+          decimals. This is not full-basket AOV. Do not sum or average these values
+          to obtain channel or category AOV; calculate that from fct_sales.
+      - name: gross_revenue_amount
+        description: Sum of fact sales_amount, retained at full precision for rollups.
+        data_tests: [not_null]
+      - name: total_product_cost
+        data_tests: [not_null]
+      - name: total_units_sold
+        data_tests: [not_null]
+      - name: gross_profit_amount
+        data_tests: [not_null]
+      - name: gross_profit_margin_percentage
+        description: >-
+          Revenue-weighted margin for this row, rounded to two decimals; null for
+          zero revenue. Recompute from summed profit and revenue for rollups.

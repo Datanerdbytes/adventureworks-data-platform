@@ -4,7 +4,9 @@ BigQuery staging and reporting marts for AdventureWorks sales data.
 
 - [Project documentation and operating guide](docs/PROJECT_GUIDE.md)
 - [Model lineage diagram and inventory](docs/LINEAGE.md)
+- [Product sales semantics and migration](docs/PRODUCT_SALES.md)
 - [Interactive dbt documentation and lineage](target/static_index.html)
+- [Offline source documentation and lineage](target/docs-offline/static_index.html)
 
 Generate fresh documentation with `dbt docs generate --static`; open `target/static_index.html` or run `dbt docs serve --port 8080`.
 
@@ -37,7 +39,7 @@ dbt run --select stg_fact_reseller_sales
 dbt test --select stg_fact_reseller_sales
 ```
 
-The 35 tests cover required keys and core fields, a nonempty table, order-line uniqueness, and dimension relationships. Product keys reference `stg_product`; other dimension keys reference raw dimension tables until staging models exist for them.
+The configured tests cover required keys and core fields, a nonempty table, order-line uniqueness, and dimension relationships. Product keys reference `stg_product`; other dimension keys reference raw dimension tables until staging models exist for them.
 
 Validation also checks positive order quantities, discount fractions between zero and one, due/ship dates on or after the order date, and date keys matching their calendar dates. These expectations describe sales transactions; review them if returns or other transaction types are introduced.
 
@@ -95,3 +97,19 @@ Territory IDs and keys must be unique and non-null, regional mappings must match
 the source, and each country must map consistently to one corporate group. All
 three groups (`North America`, `Europe`, `Pacific`) must be represented. Values
 outside that list produce warnings, retaining visibility of the source `NA` placeholder.
+
+### Reporting model validation
+
+Dedicated YAML files define tests for revenue, growth, demographics, and product
+sales. See the [current model/test inventory](docs/PROJECT_GUIDE.md#validation-inventory).
+`marts_product_sales_performance` replaces the inventory-named model and preserves
+unmatched product sales. Its dimension relationship test flags missing matches;
+its separate fact reconciliation test checks financial totals and distinct orders.
+The shared `int_product_sales` model also feeds monthly revenue reporting.
+
+Demographics requires the rebuilt `fct_sales.sales_territory_key`. Internet unknown
+attributes are not wholesale labels. Growth reports monthly weekday/weekend sales
+and AOV, not growth rates or moving averages, and remains a profile-schema view.
+
+Build commands and the no-warehouse documentation workflow are in the
+[operating guide](docs/PROJECT_GUIDE.md#selective-rebuilds-and-offline-documentation).

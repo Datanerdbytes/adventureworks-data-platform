@@ -13,6 +13,7 @@ unified_sales as (
         sales_order_line_item,
         product_key,
         order_date_key,
+        sales_territory_key,
         'Internet' as sales_channel,
         customer_key,
         null as reseller_key,  -- Internet sales do not have reseller anchors
@@ -29,6 +30,7 @@ unified_sales as (
         sales_order_line_item,
         product_key,
         order_date_key,
+        sales_territory_key,
         'Reseller' as sales_channel,
         null as customer_key, -- Reseller orders do not have a B2C customer anchor
         reseller_key,
@@ -47,6 +49,7 @@ select
     -- 🔗 Core Dimensions Integration Indexes
     product_key,
     order_date_key,
+    sales_territory_key,
     customer_key,
     reseller_key,
 

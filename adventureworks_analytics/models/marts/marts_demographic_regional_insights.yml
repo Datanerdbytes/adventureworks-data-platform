@@ -1,0 +1,131 @@
+version: 2
+
+models:
+  - name: marts_demographic_regional_insights
+    description: >-
+      All-time sales grouped by sales territory group/country/region, customer
+      state/city, channel, occupation, education, gender, and income bracket.
+      Geography is a mix of order sales territory and customer residence; reseller
+      customer attributes are not applicable. There is no date grain. Revenue and
+      profit are rounded per segment, so their rollups may differ from rounding
+      the fact total once. Internet null or blank demographic text attributes and
+      missing income are labeled Unknown; wholesale labels are reserved for Reseller.
+    data_tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - territory_group
+              - territory_country
+              - territory_region
+              - customer_state_province
+              - customer_city
+              - sales_channel
+              - customer_occupation
+              - customer_education_level
+              - customer_gender
+              - customer_income_bracket
+      - dbt_utils.expression_is_true:
+          name: demographics_reseller_attributes_not_applicable
+          arguments:
+            expression: >-
+              sales_channel != 'Reseller' or (
+                customer_state_province = 'Wholesale/Reseller'
+                and customer_city = 'Wholesale/Reseller'
+                and customer_occupation = 'N/A - Wholesale'
+                and customer_education_level = 'N/A - Wholesale'
+                and customer_gender = 'N/A - Wholesale'
+                and customer_income_bracket = 'N/A - Wholesale'
+              )
+      - dbt_utils.expression_is_true:
+          name: demographics_internet_not_labeled_wholesale
+          arguments:
+            expression: >-
+              sales_channel != 'Internet' or (
+                customer_state_province != 'Wholesale/Reseller'
+                and customer_city != 'Wholesale/Reseller'
+                and customer_occupation != 'N/A - Wholesale'
+                and customer_education_level != 'N/A - Wholesale'
+                and customer_gender != 'N/A - Wholesale'
+                and customer_income_bracket != 'N/A - Wholesale'
+              )
+    columns:
+      - name: territory_group
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_sales_territory')
+                field: territory_group
+      - name: territory_country
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_sales_territory')
+                field: territory_country
+      - name: territory_region
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_sales_territory')
+                field: territory_region
+      - name: customer_state_province
+        description: Customer residence for Internet; Wholesale/Reseller for Reseller.
+        data_tests: [not_null]
+      - name: customer_city
+        description: Customer residence for Internet; Wholesale/Reseller for Reseller.
+        data_tests: [not_null]
+      - name: sales_channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Internet', 'Reseller']
+      - name: customer_occupation
+        data_tests: [not_null]
+      - name: customer_education_level
+        data_tests: [not_null]
+      - name: customer_gender
+        description: >-
+          Male/Female when known; use Unknown for missing Internet gender and
+          N/A - Wholesale only for reseller sales.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Male', 'Female', 'Unknown', 'N/A - Wholesale']
+      - name: customer_income_bracket
+        description: >-
+          Income boundaries are below 30000, [30000,70000), [70000,100000),
+          and 100000 or above. Unknown denotes missing Internet income;
+          N/A - Wholesale is reserved for reseller sales.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Low Income (<30k)'
+                  - 'Middle Income (30k-70k)'
+                  - 'High Income (70k-100k)'
+                  - 'Very High Income (100k+)'
+                  - 'Unknown'
+                  - 'N/A - Wholesale'
+      - name: total_orders_count
+        description: >-
+          Distinct order numbers within each segment and channel. Do not sum
+          across segments unless each order belongs to exactly one segment.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: '> 0'
+      - name: total_units_sold
+        data_tests: [not_null]
+      - name: gross_revenue_amount
+        description: Sum of fact sales_amount, rounded to two decimals per segment.
+        data_tests: [not_null]
+      - name: gross_profit_amount
+        description: Revenue less total product cost, rounded per segment; losses are valid.
+        data_tests: [not_null]

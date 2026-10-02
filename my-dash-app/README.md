@@ -77,3 +77,22 @@ npx --yes prettier --check 'my-dash-app/assets/*.css' 'my-dash-app/assets/*.js' 
 Test browser navigation/back/forward, refresh, grid search/sort/filter/pagination,
 settings across reloads, sidebar persistence, keyboard focus, and drawer Escape
 at 375px, 768px, 1024px, and 1440px. Check empty search results and unknown routes.
+
+## Dashboard report pages
+
+Dashboard now has an expandable Reports submenu plus four report cards on its
+Overview. Deep links open the submenu and identify the active report. In the
+collapsed rail, the Dashboard chevron expands the sidebar to reveal reports.
+
+- `/dashboard/executive`: Executive Revenue & Sales Performance.
+- `/dashboard/wholesale`: B2B Wholesale & Reseller Analytics.
+- `/dashboard/growth`: Time-Series Growth & Seasonal Dynamics.
+- `/dashboard/customers`: Customer Demographics & Regional Footprint.
+
+Each page has sample-year and region filters, four KPIs, two charts, and a
+paginated detail grid. Filters persist for the browser session. Tables respect
+Settings page size. Reports use an independent deterministic synthetic order
+fixture for 2025–2026; no BigQuery queries run. Amounts are USD and illustrative.
+Wholesale uses reseller-channel orders; demographics deduplicate Internet-channel
+customers. Growth compares both years but uses the selected year for detail and
+month-over-month metrics, including the prior December baseline when available.

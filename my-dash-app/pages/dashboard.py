@@ -2,6 +2,7 @@ import dash
 from dash import Input, Output, callback, dcc, html
 import plotly.express as px
 from components import card, details, graph, heading, metric
+from analytics import REPORTS
 from data import activity, runs
 from theme import TOKENS, style_figure
 
@@ -17,6 +18,24 @@ def layout():
                 dcc.Link(
                     "Explore tables →", href="/tables", className="button primary"
                 ),
+            ),
+            html.Div(
+                [
+                    dcc.Link(
+                        [
+                            html.Span(f"0{index + 1}", className="report-number"),
+                            html.Strong(title),
+                            html.Small(description),
+                            html.Span("Open report →", className="report-action"),
+                        ],
+                        href=f"/dashboard/{kind}",
+                        className="report-launcher",
+                    )
+                    for index, (kind, (title, _, description)) in enumerate(
+                        REPORTS.items()
+                    )
+                ],
+                className="report-launchers",
             ),
             html.Div(id="dashboard-metrics", className="metrics"),
             html.Div(
