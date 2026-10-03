@@ -282,3 +282,34 @@ body.sidebar-collapsed .submenu-toggle {
   color: var(--muted);
   background: var(--background);
 }
+
+.metrics.wholesale-warehouse-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (min-width: 768px) and (max-width: 1200px) {
+  .metrics.wholesale-warehouse-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.wholesale-warehouse-kpis .metric strong {
+  font-size: clamp(16px, 1.6vw, 25px);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .metrics.wholesale-warehouse-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.wholesale-warehouse-kpis [role="status"]:empty {
+  display: none;
+}
+
+.wholesale-warehouse-kpis .metric > .muted {
+  display: block;
+  min-height: 3em;
+  line-height: 1.5;
+}
+.wholesale-warehouse-kpis .metric {
+  min-height: 158px;
+}

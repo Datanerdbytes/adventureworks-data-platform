@@ -330,7 +330,7 @@ clientside_callback(
 )
 
 clientside_callback(
-    "function(path) { return path === '/dashboard/executive' ? 'Warehouse data' : 'Demo data'; }",
+    "function(path) { return path === '/dashboard/executive' ? 'Warehouse data' : path === '/dashboard/wholesale' ? 'Warehouse KPIs · Demo charts' : 'Demo data'; }",
     Output("workspace-data-label", "children"),
     Input("app-location", "pathname"),
 )

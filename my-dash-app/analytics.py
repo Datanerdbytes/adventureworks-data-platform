@@ -87,7 +87,7 @@ def sales_fixture():
     return pd.DataFrame(rows)
 
 
-def report_layout(kind):
+def report_layout(kind, sample_filters=True):
     title, _, description = REPORTS[kind]
     return html.Div(
         [
@@ -120,35 +120,41 @@ def report_layout(kind):
                 if kind == "executive"
                 else []
             ),
-            html.Div(
-                [
-                    field(
-                        "Sample year",
-                        dcc.Dropdown(
-                            [2025, 2026],
-                            2026,
-                            id=f"{kind}-year",
-                            clearable=False,
-                            persistence=True,
-                            persistence_type="session",
+            (
+                html.Div(
+                    [
+                        field(
+                            "Sample year",
+                            dcc.Dropdown(
+                                [2025, 2026],
+                                2026,
+                                id=f"{kind}-year",
+                                clearable=False,
+                                persistence=True,
+                                persistence_type="session",
+                            ),
                         ),
-                    ),
-                    field(
-                        "Region",
-                        dcc.Dropdown(
-                            ["All regions", *REGIONS],
-                            "All regions",
-                            id=f"{kind}-region",
-                            clearable=False,
-                            persistence=True,
-                            persistence_type="session",
+                        field(
+                            "Region",
+                            dcc.Dropdown(
+                                ["All regions", *REGIONS],
+                                "All regions",
+                                id=f"{kind}-region",
+                                clearable=False,
+                                persistence=True,
+                                persistence_type="session",
+                            ),
                         ),
-                    ),
-                ],
-                className="filters",
+                    ],
+                    className="filters",
+                )
+                if sample_filters
+                else dcc.Store(id=f"{kind}-sample-load", data=True)
             ),
             html.Div(
-                id=f"{kind}-metrics", className="metrics", hidden=kind == "executive"
+                id=f"{kind}-metrics",
+                className="metrics",
+                hidden=kind in ("executive", "wholesale"),
             ),
             html.Div(
                 [
@@ -233,6 +239,7 @@ def build_report(kind, year, region, preferences=None):
         detail = monthly.rename(columns={"Date": "Month"})
         detail["Month"] = detail["Month"].dt.strftime("%Y-%m")
     elif kind == "wholesale":
+        metrics = []
         detail = selected.groupby(["Reseller", "Region"], as_index=False).agg(
             Revenue=("Revenue", "sum"),
             Orders=("Revenue", "size"),
@@ -253,11 +260,6 @@ def build_report(kind, year, region, preferences=None):
             y="Revenue",
             color="Category",
             color_discrete_sequence=COLORS,
-        )
-        metrics[3] = metric(
-            "Active resellers",
-            str(selected["Reseller"].nunique()),
-            "Distinct partners in selection",
         )
         note += " Wholesale reports include only the reseller channel."
     elif kind == "growth":
@@ -392,7 +394,7 @@ def empty_report(message, preferences):
     )
 
 
-def register_report_callbacks(kind):
+def register_report_callbacks(kind, sample_filters=True):
     @callback(
         Output(f"{kind}-metrics", "children"),
         Output(f"{kind}-primary", "figure"),
@@ -401,11 +403,17 @@ def register_report_callbacks(kind):
         Output(f"{kind}-detail", "columnDefs"),
         Output(f"{kind}-detail", "dashGridOptions"),
         Output(f"{kind}-status", "children"),
-        Input(f"{kind}-year", "value"),
-        Input(f"{kind}-region", "value"),
+        *(
+            [Input(f"{kind}-year", "value"), Input(f"{kind}-region", "value")]
+            if sample_filters
+            else [Input(f"{kind}-sample-load", "data")]
+        ),
         Input("display-preferences", "data"),
     )
-    def populate(year, region, preferences):
+    def populate(*args):
+        year, region, preferences = (
+            args if sample_filters else (2026, "All regions", args[-1])
+        )
         try:
             return build_report(kind, year, region, preferences)
         except (ValueError, KeyError, TypeError):
