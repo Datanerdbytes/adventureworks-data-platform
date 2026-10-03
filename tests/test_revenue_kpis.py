@@ -11,6 +11,34 @@ from revenue_kpis import kpi_cards, kpi_sql
 
 
 class RevenueKpiTests(unittest.TestCase):
+    def test_each_kpi_has_its_own_loading_target(self):
+        from dash import dcc
+        from revenue_kpis import KPI_FIELDS
+        from pages.executive import update_report
+
+        def walk(component):
+            yield component
+            children = getattr(component, "children", [])
+            for child in children if isinstance(children, list) else [children]:
+                if child is not None:
+                    yield from walk(child)
+
+        nodes = list(walk(layout()))
+        for key, _, _ in KPI_FIELDS:
+            spinner = next(
+                n
+                for n in nodes
+                if getattr(n, "id", None) == f"executive-kpi-loading-{key}"
+            )
+            self.assertIsInstance(spinner, dcc.Loading)
+            self.assertEqual(spinner.children.id, f"executive-kpi-slot-{key}")
+        result = update_report(None, *["__all__"] * 5, {})
+        self.assertEqual(len(result), 11)
+        self.assertEqual(
+            [card.id for card in result[:5]],
+            [f"executive-kpi-{key}" for key, _, _ in KPI_FIELDS],
+        )
+
     def test_five_cards_and_percentage_units(self):
         cards = kpi_cards(
             {

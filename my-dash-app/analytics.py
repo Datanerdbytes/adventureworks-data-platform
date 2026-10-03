@@ -161,11 +161,24 @@ def report_layout(kind, sample_filters=True):
                     card(
                         {
                             "executive": "Revenue by month",
-                            "wholesale": "Revenue by reseller",
+                            "wholesale": "Top Resellers Leaderboard",
                             "growth": "Monthly revenue comparison",
                             "customers": "Retail customers by region",
                         }[kind],
-                        [graph(f"{kind}-primary")],
+                        [
+                            graph(f"{kind}-primary"),
+                            *(
+                                [
+                                    html.P(
+                                        id="wholesale-leaderboard-status",
+                                        role="status",
+                                        className="muted",
+                                    )
+                                ]
+                                if kind == "wholesale"
+                                else []
+                            ),
+                        ],
                     ),
                     card(
                         {
@@ -261,7 +274,7 @@ def build_report(kind, year, region, preferences=None):
             color="Category",
             color_discrete_sequence=COLORS,
         )
-        note += " Wholesale reports include only the reseller channel."
+        note = "Supporting detail uses deterministic synthetic data for 2026 across all regions, not production results. Currency: USD. Wholesale rows include only the reseller channel."
     elif kind == "growth":
         comparisons = all_sales.groupby(["Year", "Month"], as_index=False)[
             "Revenue"
@@ -394,11 +407,13 @@ def empty_report(message, preferences):
     )
 
 
-def register_report_callbacks(kind, sample_filters=True):
+def register_report_callbacks(
+    kind, sample_filters=True, primary_chart=True, secondary_chart=True
+):
     @callback(
         Output(f"{kind}-metrics", "children"),
-        Output(f"{kind}-primary", "figure"),
-        Output(f"{kind}-secondary", "figure"),
+        *([Output(f"{kind}-primary", "figure")] if primary_chart else []),
+        *([Output(f"{kind}-secondary", "figure")] if secondary_chart else []),
         Output(f"{kind}-detail", "rowData"),
         Output(f"{kind}-detail", "columnDefs"),
         Output(f"{kind}-detail", "dashGridOptions"),
@@ -415,10 +430,18 @@ def register_report_callbacks(kind, sample_filters=True):
             args if sample_filters else (2026, "All regions", args[-1])
         )
         try:
-            return build_report(kind, year, region, preferences)
+            result = build_report(kind, year, region, preferences)
         except (ValueError, KeyError, TypeError):
             logging.getLogger(__name__).exception("Unable to build synthetic report")
-            return empty_report(
-                "Unable to load the sample report. Change a filter to retry.",
+            result = empty_report(
+                "Unable to load the sample report. Reload to retry.",
                 preferences,
             )
+        return tuple(
+            value
+            for index, value in enumerate(result)
+            if not (
+                (index == 1 and not primary_chart)
+                or (index == 2 and not secondary_chart)
+            )
+        )
