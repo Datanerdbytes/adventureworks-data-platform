@@ -173,3 +173,32 @@ precision; the existing mart rounds its segment revenue. No dbt rebuild is neede
 Historical baselines retain channel/category/subcategory selections and expand
 date scope only. Missing or nonpositive comparison denominators show unavailable.
 Partial periods use available totals rather than pretending to be matched YTD.
+
+### Customer and regional KPIs
+
+The combined Customers & Regions page reuses the five warehouse filters and
+five individually wrapped loading cards. Existing charts/table remain explicitly
+labeled synthetic examples with separate sample controls.
+
+Customer base includes distinct profiles acquired by the reporting cutoff,
+including dormant customers. Acquisition uses `date_first_purchase`, falling
+back to the first recorded retail sale when missing. Product filters restrict
+the cohort to historical purchasers of those products. Average customer value
+is cumulative matching retail revenue through the cutoff divided by that base.
+Churn measures profiles whose last retail order (across all products) was more
+than 180 days before the cutoff; where fact history is absent, first-purchase
+date is the last known purchase. The cutoff is the selected year/quarter end,
+capped at the latest warehouse sale; All uses the latest available sale.
+
+Top Revenue Territory ranks selected-period sales across selected channels.
+Top Growth State ranks positive absolute distinct-invoice increases for the
+latest reporting month against the immediately preceding calendar month, with
+unchanged product/channel filters. Country disambiguates identical state names;
+ties sort by state/country. Missing prior-month history shows unavailable growth.
+Partial months compare available totals. Reseller has no customer keys and is
+not applicable to the four customer-based cards.
+
+The demographic and growth marts discard customer IDs and/or customer-state/date
+grain. These non-additive metrics therefore reuse their source facts and dimensions
+rather than summing demographic segment counts or inventing missing identities.
+Queries are parameterized, cached for 60 seconds, and capped at 100 MiB billed.
