@@ -313,3 +313,22 @@ body.sidebar-collapsed .submenu-toggle {
 .wholesale-warehouse-kpis .metric {
   min-height: 158px;
 }
+
+.analytics-report #wholesale-primary,
+.analytics-report #wholesale-secondary {
+  height: 420px;
+}
+
+.analytics-report .ag-cell.wholesale-lead-alert {
+  color: #9f3038;
+  font-weight: 600;
+}
+
+#executive-detail .ag-row.executive-loss-row {
+  background-color: #fcecef;
+}
+
+#executive-detail .ag-cell.executive-profit-loss {
+  color: #9f3038;
+  font-weight: 700;
+}

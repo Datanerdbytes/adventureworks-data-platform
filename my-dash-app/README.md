@@ -141,3 +141,16 @@ Set `FLASK_SECRET_KEY` in the runtime environment for a stable signing key acros
 restarts/workers. Without it, the local single-process server generates a random
 key at startup, so restarting requires signing in again. Secure cookies are
 used when `AUTH_APP_ORIGIN` is HTTPS; HTTP is intended only for local development.
+
+### Wholesale fulfillment matrix
+
+The wholesale table uses `stg_fact_reseller_sales` from `BQ_STAGING_DATASET`
+(default `silver_adventureworks`), joined to the analytics date, product, and
+reseller dimensions. All five warehouse filters apply. Invoice counts are distinct
+per reseller; average units divide filtered units by matching invoices. Shipping
+lead days use calendar-date differences, averaged within invoice and then across
+invoices, ignoring missing shipping dates. Missing lead times display an em dash.
+Buyer geography comes from the reseller state/province and country. Per requested
+business display mapping, A and M show Monthly, Q Quarterly, and S Semiannually.
+Values above 5 days are red and labeled Over target. Results are capped at 1,000
+accounts; exceeding the cap prompts narrower filters instead of silently truncating.

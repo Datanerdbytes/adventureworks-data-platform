@@ -11,6 +11,7 @@ from components import card, field, graph, grid, heading
 from data import grid_options
 from revenue_kpis import (
     kpi_cards,
+    KPI_FIELDS,
     add_yoy_comparison,
     load_filter_catalog,
     load_executive_report,
@@ -69,119 +70,121 @@ def layout():
                 className="muted",
             ),
             html.P(id="executive-filter-status", role="status", className="muted"),
-            dcc.Loading(
-                html.Div(
-                    [
-                        html.Div(
-                            kpi_cards(note="Loading warehouse data…"),
-                            id="executive-live-kpis",
-                            className="metrics executive-kpis",
-                        ),
-                        html.Div(
-                            [
-                                card(
-                                    html.Span(
-                                        "Revenue by month", id="executive-chart-title"
-                                    ),
-                                    [graph("executive-primary")],
-                                    html.Details(
-                                        [
-                                            html.Summary(
-                                                "•••",
-                                                title="Choose monthly chart",
-                                                **{
-                                                    "aria-label": "Choose monthly chart"
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.Span(
-                                                        "Chart type", className="muted"
-                                                    ),
-                                                    dcc.RadioItems(
-                                                        id="executive-chart-type",
-                                                        options=[
-                                                            {
-                                                                "label": "Revenue line",
-                                                                "value": "line",
-                                                            },
-                                                            {
-                                                                "label": "Revenue + margin",
-                                                                "value": "dual",
-                                                            },
-                                                        ],
-                                                        value="line",
-                                                        persistence=True,
-                                                        persistence_type="local",
-                                                    ),
-                                                ],
-                                                className="chart-type-options",
-                                            ),
-                                        ],
-                                        className="chart-type-menu",
-                                    ),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            dcc.Loading(
+                                html.Div(placeholder, id=f"executive-kpi-slot-{key}"),
+                                id=f"executive-kpi-loading-{key}",
+                                type="circle",
+                            )
+                            for (key, _, _), placeholder in zip(
+                                KPI_FIELDS, kpi_cards(note="Loading warehouse data…")
+                            )
+                        ],
+                        id="executive-live-kpis",
+                        className="metrics executive-kpis",
+                    ),
+                    html.Div(
+                        [
+                            card(
+                                html.Span(
+                                    "Revenue by month", id="executive-chart-title"
                                 ),
-                                card(
-                                    html.Span(
-                                        "Revenue by channel",
-                                        id="executive-breakdown-title",
-                                    ),
-                                    [graph("executive-secondary")],
-                                    html.Details(
-                                        [
-                                            html.Summary(
-                                                "•••",
-                                                title="Choose revenue breakdown",
-                                                **{
-                                                    "aria-label": "Choose revenue breakdown"
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.Span(
-                                                        "Chart type", className="muted"
-                                                    ),
-                                                    dcc.RadioItems(
-                                                        id="executive-breakdown-type",
-                                                        options=[
-                                                            {
-                                                                "label": "Revenue by channel · Bars",
-                                                                "value": "bar",
-                                                            },
-                                                            {
-                                                                "label": "Channel split · Donut",
-                                                                "value": "donut",
-                                                            },
-                                                            {
-                                                                "label": "Product mix · Treemap",
-                                                                "value": "treemap",
-                                                            },
-                                                        ],
-                                                        value="bar",
-                                                        persistence="channel-views-v2",
-                                                        persistence_type="local",
-                                                    ),
-                                                ],
-                                                className="chart-type-options",
-                                            ),
-                                        ],
-                                        className="chart-type-menu",
-                                    ),
+                                [graph("executive-primary")],
+                                html.Details(
+                                    [
+                                        html.Summary(
+                                            "•••",
+                                            title="Choose monthly chart",
+                                            **{"aria-label": "Choose monthly chart"},
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Span(
+                                                    "Chart type", className="muted"
+                                                ),
+                                                dcc.RadioItems(
+                                                    id="executive-chart-type",
+                                                    options=[
+                                                        {
+                                                            "label": "Revenue line",
+                                                            "value": "line",
+                                                        },
+                                                        {
+                                                            "label": "Revenue + margin",
+                                                            "value": "dual",
+                                                        },
+                                                    ],
+                                                    value="line",
+                                                    persistence=True,
+                                                    persistence_type="local",
+                                                ),
+                                            ],
+                                            className="chart-type-options",
+                                        ),
+                                    ],
+                                    className="chart-type-menu",
                                 ),
-                            ],
-                            className="report-charts",
-                        ),
-                        card(
-                            "Product performance",
-                            [grid("executive-detail")],
-                            html.Span("Warehouse data · USD", className="badge"),
-                        ),
-                        html.P(
-                            id="executive-kpi-status", role="status", className="muted"
-                        ),
-                    ]
-                ),
-                type="circle",
+                            ),
+                            card(
+                                html.Span(
+                                    "Revenue by channel",
+                                    id="executive-breakdown-title",
+                                ),
+                                [graph("executive-secondary")],
+                                html.Details(
+                                    [
+                                        html.Summary(
+                                            "•••",
+                                            title="Choose revenue breakdown",
+                                            **{
+                                                "aria-label": "Choose revenue breakdown"
+                                            },
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Span(
+                                                    "Chart type", className="muted"
+                                                ),
+                                                dcc.RadioItems(
+                                                    id="executive-breakdown-type",
+                                                    options=[
+                                                        {
+                                                            "label": "Revenue by channel · Bars",
+                                                            "value": "bar",
+                                                        },
+                                                        {
+                                                            "label": "Channel split · Donut",
+                                                            "value": "donut",
+                                                        },
+                                                        {
+                                                            "label": "Product mix · Treemap",
+                                                            "value": "treemap",
+                                                        },
+                                                    ],
+                                                    value="bar",
+                                                    persistence="channel-views-v2",
+                                                    persistence_type="local",
+                                                ),
+                                            ],
+                                            className="chart-type-options",
+                                        ),
+                                    ],
+                                    className="chart-type-menu",
+                                ),
+                            ),
+                        ],
+                        className="report-charts",
+                    ),
+                    card(
+                        "Product performance",
+                        [grid("executive-detail")],
+                        html.Span("Warehouse data · USD", className="badge"),
+                    ),
+                    html.P(id="executive-kpi-status", role="status", className="muted"),
+                ],
             ),
         ],
         className="analytics-report",
@@ -516,7 +519,7 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
 
 
 @callback(
-    Output("executive-live-kpis", "children"),
+    *[Output(f"executive-kpi-slot-{key}", "children") for key, _, _ in KPI_FIELDS],
     Output("executive-primary", "figure"),
     Output("executive-secondary", "figure"),
     Output("executive-detail", "rowData"),
@@ -529,6 +532,31 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
     Input("executive-chart-type", "value"),
     Input("executive-breakdown-type", "value"),
 )
+def update_report(
+    catalog,
+    year,
+    quarter,
+    channel,
+    category,
+    subcategory,
+    preferences,
+    chart_type="line",
+    breakdown_type="bar",
+):
+    cards, *report_outputs = populate_report(
+        catalog,
+        year,
+        quarter,
+        channel,
+        category,
+        subcategory,
+        preferences,
+        chart_type,
+        breakdown_type,
+    )
+    return (*cards, *report_outputs)
+
+
 def populate_report(
     catalog,
     year,
@@ -550,7 +578,31 @@ def populate_report(
             "Units sold",
         )
     ]
+    for column in columns:
+        field = column["field"]
+        if field in ("Revenue (USD)", "Gross profit (USD)"):
+            precision = 0 if field == "Revenue (USD)" else 2
+            column.update(
+                type="numericColumn",
+                filter="agNumberColumnFilter",
+                valueFormatter={
+                    "function": f"params.value == null ? '—' : d3.format('$,.{precision}f')(params.value)"
+                },
+                tooltipValueGetter={
+                    "function": "params.value == null ? 'No value' : d3.format('$,.2f')(params.value)"
+                },
+            )
+        if field == "Gross profit (USD)":
+            column["cellClassRules"] = {
+                "executive-profit-loss": "params.value != null && params.value < 0"
+            }
+            column["tooltipValueGetter"] = {
+                "function": "params.value == null ? 'No value' : (params.value < 0 ? 'Loss: ' : 'Gross profit: ') + d3.format('$,.2f')(params.value)"
+            }
     settings = grid_options((preferences or {}).get("pageSize", 10))
+    settings["rowClassRules"] = {
+        "executive-loss-row": "params.data && params.data['Gross profit (USD)'] != null && params.data['Gross profit (USD)'] < 0"
+    }
     if catalog is None:
         return (
             kpi_cards(note="Waiting for warehouse filters"),
