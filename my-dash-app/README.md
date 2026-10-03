@@ -154,3 +154,22 @@ Buyer geography comes from the reseller state/province and country. Per requeste
 business display mapping, A and M show Monthly, Q Quarterly, and S Semiannually.
 Values above 5 days are red and labeled Over target. Results are capped at 1,000
 accounts; exceeding the cap prompts narrower filters instead of silently truncating.
+
+### Growth scorecards
+
+The five Growth KPIs use `marts_growth_trends` for monthly revenue history. Since
+that mart has no dates or product hierarchy, product-filtered monthly totals are
+recomputed from `fct_sales` with date/product dimensions. Daily invoice totals
+from the same facts support rolling revenue and velocity. If the growth mart is not deployed, the loader uses fact-derived monthly totals
+as a fallback. Fact totals retain their original
+precision; the existing mart rounds its segment revenue. No dbt rebuild is needed.
+
+- QoQ compares the latest selected calendar quarter with the immediately preceding quarter.
+- YoY compares the latest selected year with the prior year, using the same quarter when selected.
+- Rolling 30-Day Run Rate means trailing 30-calendar-day revenue, not an annualized projection. The SQL RANGE window ends at the latest selected sales date; insufficient initial history shows unavailable.
+- Peak Seasonality Multiplier is maximum / mean revenue over selected year-months with sales.
+- Avg Daily Order Velocity is distinct channel/order invoices divided by active sales dates, not order-line rows or all calendar days.
+
+Historical baselines retain channel/category/subcategory selections and expand
+date scope only. Missing or nonpositive comparison denominators show unavailable.
+Partial periods use available totals rather than pretending to be matched YTD.

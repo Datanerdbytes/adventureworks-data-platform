@@ -332,3 +332,13 @@ body.sidebar-collapsed .submenu-toggle {
   color: #9f3038;
   font-weight: 700;
 }
+
+.growth-kpis .metric {
+  min-height: 174px;
+}
+
+.growth-kpis .metric > .muted {
+  display: block;
+  min-height: 3em;
+  line-height: 1.5;
+}
