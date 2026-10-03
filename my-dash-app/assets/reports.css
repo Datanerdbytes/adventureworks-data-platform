@@ -342,3 +342,23 @@ body.sidebar-collapsed .submenu-toggle {
   min-height: 3em;
   line-height: 1.5;
 }
+
+.customer-kpis .metric {
+  min-height: 174px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.customer-kpis .metric > .muted {
+  min-height: 3em;
+  line-height: 1.5;
+}
+
+.customer-kpis .metric strong {
+  min-height: 2.5em;
+}
+
+.customer-kpis .kpi-yoy {
+  margin-top: auto;
+}
