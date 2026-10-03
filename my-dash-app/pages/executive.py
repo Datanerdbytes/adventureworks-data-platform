@@ -2,6 +2,7 @@
 
 import logging
 import dash
+import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -178,11 +179,7 @@ def layout():
                         ],
                         className="report-charts",
                     ),
-                    card(
-                        "Product performance",
-                        [grid("executive-detail")],
-                        html.Span("Warehouse data · USD", className="badge"),
-                    ),
+                    product_performance_card(),
                     html.P(id="executive-kpi-status", role="status", className="muted"),
                 ],
             ),
@@ -658,3 +655,35 @@ def breakdown_chart_title(chart_type):
         "donut": "Omnichannel sales split",
         "treemap": "Revenue by category & subcategory",
     }.get(chart_type, "Revenue by channel")
+
+
+def product_performance_card():
+    loading = grid("executive-detail")
+    loading.children.defaultColDef["useValueFormatterForExport"] = False
+    loading.children.csvExportParams = {
+        "fileName": "executive-product-performance.csv",
+        "exportedRows": "filteredAndSorted",
+    }
+    return card(
+        "Product performance",
+        [loading],
+        dbc.Button(
+            "Export CSV",
+            id="executive-detail-export",
+            n_clicks=0,
+            size="sm",
+            color="secondary",
+            className="button",
+        ),
+    )
+
+
+@callback(
+    Output("executive-detail", "exportDataAsCsv"),
+    Input("executive-detail-export", "n_clicks"),
+    prevent_initial_call=True,
+)
+def export_product_performance(n_clicks):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    return True

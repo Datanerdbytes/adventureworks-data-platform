@@ -762,7 +762,13 @@ def operations_columns():
 def operations_card():
     loading = grid("wholesale-detail")
     loading.children.columnDefs = operations_columns()
-    loading.children.defaultColDef.update(wrapHeaderText=True, autoHeaderHeight=True)
+    loading.children.defaultColDef.update(
+        wrapHeaderText=True, autoHeaderHeight=True, useValueFormatterForExport=False
+    )
+    loading.children.csvExportParams = {
+        "fileName": "wholesale-operations-fulfillment.csv",
+        "exportedRows": "filteredAndSorted",
+    }
     return card(
         "Wholesale Operations & Fulfillment Matrix",
         [
@@ -772,7 +778,14 @@ def operations_card():
             ),
             loading,
         ],
-        dbc.Badge("Warehouse data", color="light", text_color="dark"),
+        dbc.Button(
+            "Export CSV",
+            id="wholesale-detail-export",
+            n_clicks=0,
+            size="sm",
+            color="secondary",
+            className="button",
+        ),
     )
 
 
@@ -828,3 +841,14 @@ def populate_operations(catalog, year, quarter, channel, category, subcategory):
             [],
             "Unable to load fulfillment records. Change a filter or reload to retry.",
         )
+
+
+@callback(
+    Output("wholesale-detail", "exportDataAsCsv"),
+    Input("wholesale-detail-export", "n_clicks"),
+    prevent_initial_call=True,
+)
+def export_wholesale_operations(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    return True
