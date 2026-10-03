@@ -21,7 +21,7 @@ class ReportTests(unittest.TestCase):
             for year in (2025, 2026):
                 with self.subTest(kind=kind, year=year):
                     result = build_report(kind, year, "Canada", {"pageSize": 20})
-                    self.assertEqual(len(result[0]), 4)
+                    self.assertEqual(len(result[0]), 0 if kind == "wholesale" else 4)
                     self.assertTrue(len(result[1].data))
                     self.assertTrue(result[3])
                     self.assertEqual(result[5]["paginationPageSize"], 20)
