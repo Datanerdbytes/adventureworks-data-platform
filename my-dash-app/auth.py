@@ -83,6 +83,7 @@ def install_auth(server):
 
     def next_page(value):
         allowed = {
+            "/workspace",
             "/dashboard",
             "/monitoring",
             "/tables",
