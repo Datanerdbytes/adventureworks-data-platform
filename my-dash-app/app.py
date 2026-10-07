@@ -49,6 +49,7 @@ def serve_layout():
         part[0] for part in username.replace("@", " ").replace(".", " ").split()[:2]
     ).upper()
     links = [
+        ("workspace", "Workspace Overview"),
         ("dashboard", "Dashboard"),
         ("monitoring", "Monitoring"),
         ("tables", "Tables"),
@@ -90,7 +91,11 @@ def serve_layout():
                     ),
                     html.Div(
                         [
-                            html.Span("Local workspace", className="workspace-label"),
+                            dcc.Link(
+                                "AdventureWorks Workspace",
+                                href="/workspace",
+                                className="workspace-label",
+                            ),
                             html.Span(
                                 "Demo data",
                                 id="workspace-data-label",
@@ -138,6 +143,18 @@ def serve_layout():
                     html.P("PROJECT", className="eyebrow nav-label"),
                     html.Nav(
                         [
+                            dcc.Link(
+                                [
+                                    icon("dashboard"),
+                                    html.Span(
+                                        "Workspace Overview", className="nav-label"
+                                    ),
+                                ],
+                                href="/workspace",
+                                id="nav-workspace",
+                                className="nav-link",
+                                title="Workspace Overview",
+                            ),
                             html.Div(
                                 [
                                     dcc.Link(
@@ -192,7 +209,7 @@ def serve_layout():
                                     title=label,
                                 )
                                 for key, label in links
-                                if key != "dashboard"
+                                if key not in {"dashboard", "workspace"}
                             ],
                         ],
                         className="sidebar-navigation",
@@ -308,17 +325,17 @@ def serve_layout():
 app.layout = serve_layout
 clientside_callback(
     """function(path) {
-    const keys = ['dashboard','monitoring','tables','settings'];
+    const keys = ['workspace','dashboard','monitoring','tables','settings'];
     const key = (path || '').split('/')[1];
     const reports = {executive:'Revenue & Sales',wholesale:'Wholesale & Resellers',growth:'Growth & Seasonality',customers:'Customers & Regions'};
     const report = reports[(path || '').split('/')[2]];
     window.awSidebar?.navigate(path);
     return [...keys.map(k => k === key ? 'nav-link active' : 'nav-link'),
-      report && key === 'dashboard' ? 'Dashboard / ' + report : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found')];
+      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? 'Workspace Overview' : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
 }""",
     *[
         Output(f"nav-{key}", "className")
-        for key in ["dashboard", "monitoring", "tables", "settings"]
+        for key in ["workspace", "dashboard", "monitoring", "tables", "settings"]
     ],
     Output("page-breadcrumb", "children"),
     Input("app-location", "pathname"),
@@ -330,7 +347,7 @@ clientside_callback(
 )
 
 clientside_callback(
-    "function(path) { return path === '/dashboard/customers' ? 'Warehouse data' : path === '/dashboard/executive' ? 'Warehouse data' : ['/dashboard/wholesale', '/dashboard/growth'].includes(path) ? 'Warehouse data' : 'Demo data'; }",
+    "function(path) { return path === '/workspace' ? 'Mock data · Phase 1' : path === '/dashboard/customers' ? 'Warehouse data' : path === '/dashboard/executive' ? 'Warehouse data' : ['/dashboard/wholesale', '/dashboard/growth'].includes(path) ? 'Warehouse data' : 'Demo data'; }",
     Output("workspace-data-label", "children"),
     Input("app-location", "pathname"),
 )

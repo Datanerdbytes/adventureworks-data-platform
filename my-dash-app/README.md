@@ -42,6 +42,7 @@ passwords never enter a layout, Store, or session cookie.
 
 ## Pages and preferences
 
+- `/workspace`: Workspace Overview with explicitly labeled Phase 1 sample content.
 - `/dashboard`: activity, metrics, recent runs, and workspace details.
 - `/monitoring`: pipeline and sample-window filters, duration chart, refresh, run grid.
 - `/tables`: Products, Customers, and Sales; global search and column sorting/filtering.
@@ -53,6 +54,20 @@ a link back to the website, and the sidebar toggle. Desktop navigation collapses
 from 248px to 72px and remembers the choice in this browser. Below 768px, navigation becomes a modal drawer with Escape dismissal,
 focus trapping, and focus restoration. Display preferences are local `dcc.Store`
 values; they contain no data or credentials.
+
+### Workspace Overview — Phase 1
+
+The header workspace link and sidebar entry open `/workspace` inside the existing
+authenticated app shell. Its six sections are Workspace Summary, Data Freshness,
+Saved Views, Data Quality, Metric Definitions, and Quick Links. This page does not
+query the warehouse or run pipelines. Refresh dates, ownership, quality notices,
+and saved views are illustrative fixtures rather than current operational status.
+
+Team filters narrow the sample saved views, and metric search filters the sample
+glossary. Expanding a saved view displays its example filters; saving and restoring
+report filters are deferred. Quick Links and View Monitoring open existing pages,
+which retain their own data behavior. Later phases can replace each section's
+fixtures independently while preserving this layout and navigation.
 
 ## Structure and extension
 

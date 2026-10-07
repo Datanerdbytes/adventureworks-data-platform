@@ -84,3 +84,11 @@ class LoginTests(unittest.TestCase):
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
         self.client.set_cookie("session", "tampered")
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
+
+    def test_workspace_redirect_stays_protected(self):
+        response = self.client.get("/workspace", headers={"Accept": "text/html"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("next=%2Fworkspace", response.location)
+        signed_in = self.sign_in(destination="/workspace")
+        self.assertEqual(signed_in.location, "/workspace")
+        self.assertEqual(self.client.get("/workspace").status_code, 200)
