@@ -3,6 +3,9 @@
 # ==============================================================================
 gcp-key.json
 *.json
+# Public geographic assets required by the customer revenue map.
+!/my-dash-app/map_data/customer_boundaries.json
+!/my-dash-app/assets/geo/world_110m.json
 .env
 
 # ==============================================================================

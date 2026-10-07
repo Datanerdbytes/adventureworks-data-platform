@@ -48,7 +48,7 @@ class MatrixTests(unittest.TestCase):
             matrix.reset_mock()
             self.assertEqual(
                 populate_secondary("growth", CATALOG, *([ALL] * 5))[1],
-                "Month-over-month revenue growth",
+                "Month-Over-Month Revenue Growth",
             )
             matrix.assert_not_called()
             matrix.side_effect = RuntimeError("private")

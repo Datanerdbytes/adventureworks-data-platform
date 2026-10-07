@@ -15,10 +15,6 @@ def layout():
                         "Project information",
                         [
                             details(),
-                            html.P(
-                                "This local demo does not connect to your warehouse or run pipelines.",
-                                className="muted",
-                            ),
                         ],
                     ),
                     card(

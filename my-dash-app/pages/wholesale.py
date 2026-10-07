@@ -60,10 +60,6 @@ def layout():
     page.children[-2] = operations_card()
     page.children[1:1] = [
         filter_layout(PREFIX),
-        html.P(
-            "Warehouse filters apply to all KPIs, charts, and fulfillment records.",
-            className="muted",
-        ),
         html.Div(
             [
                 html.Div(
@@ -536,7 +532,7 @@ def populate_leaderboard(catalog, year, quarter, channel, category, subcategory)
 
 def secondary_chart_card():
     return card(
-        html.Span("Wholesale product mix", id="wholesale-secondary-title"),
+        html.Span("Wholesale Product Mix", id="wholesale-secondary-title"),
         [
             graph("wholesale-secondary"),
             html.P(id="wholesale-secondary-status", role="status", className="muted"),
@@ -554,7 +550,7 @@ def secondary_chart_card():
                         dcc.RadioItems(
                             id="wholesale-secondary-type",
                             options=[
-                                {"label": "Product mix · Bars", "value": "bar"},
+                                {"label": "Product Mix · Bars", "value": "bar"},
                                 {
                                     "label": "B2B Client Value Segmentation · Scatter",
                                     "value": "scatter",
@@ -627,7 +623,7 @@ def populate_secondary(
     title = (
         "B2B Client Value Segmentation"
         if chart_type == "scatter"
-        else "Wholesale product mix"
+        else "Wholesale Product Mix"
     )
     if catalog is None:
         return leaderboard_figure(message="Waiting for warehouse filters"), title, ""
@@ -652,7 +648,7 @@ def populate_secondary(
             return (
                 product_mix_figure(rows),
                 title,
-                "Warehouse data · Reseller revenue by product category · USD",
+                "",
             )
         rows = load_reseller_scatter(
             *location, *[None if v == ALL else v for v in validated]
@@ -668,7 +664,7 @@ def populate_secondary(
         return (
             reseller_scatter_figure(rows),
             title,
-            "Warehouse data · One point per reseller with recorded annual revenue. Annual revenue is a company attribute; units sold follow the selected filters.",
+            "One point per reseller · Company annual revenue vs. filtered units sold",
         )
     except PreventUpdate:
         raise
@@ -773,7 +769,7 @@ def operations_card():
         "Wholesale Operations & Fulfillment Matrix",
         [
             html.P(
-                "Shipping target: 5 calendar days. Over-target cells are marked in red. Geography reflects the buyer’s state/province and country.",
+                "Shipping target: 5 days · Red indicates a delay",
                 className="muted",
             ),
             loading,

@@ -177,8 +177,9 @@ Partial periods use available totals rather than pretending to be matched YTD.
 ### Customer and regional KPIs
 
 The combined Customers & Regions page reuses the five warehouse filters and
-five individually wrapped loading cards. Existing charts/table remain explicitly
-labeled synthetic examples with separate sample controls.
+five individually wrapped loading cards. Both demographic charts use warehouse
+data and the same sales filters. Supporting detail remains explicitly synthetic;
+the former sample year and region dropdowns have been removed.
 
 Customer base includes distinct profiles acquired by the reporting cutoff,
 including dormant customers. Acquisition uses `date_first_purchase`, falling
@@ -202,3 +203,57 @@ The demographic and growth marts discard customer IDs and/or customer-state/date
 grain. These non-additive metrics therefore reuse their source facts and dimensions
 rather than summing demographic segment counts or inventing missing identities.
 Queries are parameterized, cached for 60 seconds, and capped at 100 MiB billed.
+
+
+The retail region and age charts count distinct customers purchasing within the
+selected sales scope, not the cumulative acquired-profile KPI base. Region means
+home country from `dim_customer`. Age uses completed years at the latest warehouse
+sales date in the selected calendar scope; missing, future, or implausible birth
+dates appear as Unknown. Under-18 customers have a separate bucket. Reseller-only
+selections show an explicit no-retail-customers state. The query deduplicates
+customer profiles before aggregation; no customer-level records reach the browser.
+
+The regional chart's three-dot menu includes a revenue Geographic Map. Select a
+sales territory group on the choropleth or in the labeled dropdown to drill into
+states/provinces; the dropdown’s All territory groups option returns to the overview. The top mapped state
+and its revenue are called out. Geographic revenue follows the demographic mart's
+territory-group/country/customer-state grain. Date/product-filtered selections
+rebuild that grain from facts; missing marts use the same fallback. Wholesale
+and unknown states contribute to territory totals but are reported as unlocated
+in state views. Map colors rescale per view. Bundled public-domain Natural Earth
+boundaries and warehouse-name aliases are documented in map_data/README.md.
+
+The customer age card's three-dot menu also offers **Customer Lifecycle Funnel
+Chart** (`px.funnel`). It uses the same acquired-profile cohort and reporting
+cutoff as the customer KPIs. Each customer appears once: New Cohort has at most
+one recorded invoice and activity within 90 days; Active Repeat has multiple
+invoices and activity within 90 days; Slipping Account last ordered 91–180 days
+ago; Dormant last ordered over 180 days ago. Missing order history falls back to
+first purchase. Product filters select the historical purchaser cohort; repeat
+counts and last activity consider all retail products through the cutoff.
+Resellers are excluded. Stages retain their chronological order, including zero
+counts, and describe a cross-sectional snapshot, not cohort conversion rates.
+Only the selected secondary chart's cached warehouse loader runs.
+
+The right-hand customer chart menu includes **Revenue by Income Tier**,
+**Revenue by Occupation Type**, and **Revenue by Education Level**. These
+horizontal bars sum filtered retail `fct_sales.sales_amount`, joined to
+`dim_customer` and the date/product dimensions. Source `englishoccupation` and
+`englisheducation` are normalized to `occupation` and `education_level` in the
+warehouse. Income tiers match the demographic mart's <30k, 30k–70k, 70k–100k,
+and 100k+ buckets; missing attributes remain Unknown. Income is ordered by tier;
+occupation and education are ranked by revenue. All five filters apply, reseller
+selections have an explicit empty state, and only the selected view is queried.
+
+The **Granular Customer Demographic & Regional Ledger** replaces customer sample
+supporting detail with cached warehouse aggregates. Rows are keyed by home
+country and state/province (both appear in the State / Province cell); territory
+is mapped from home country to the sales territory dimension. Ambiguous or
+missing geography is Unknown. Its acquired-profile cohort, cutoff, cumulative
+product-filtered sales and distinct invoice frequency match the customer KPI
+contract; dormancy considers all retail products and falls back to first purchase
+when order history is absent. Income and occupation modes count each profile
+once, resolving tied frequencies with known values before Unknown and then
+alphabetically. The eight-column AG Grid supports numeric sorting/filtering,
+10-row pagination and CSV export of all filtered/sorted rows with raw numeric
+values. The customer page no longer runs the synthetic supporting-detail callback.

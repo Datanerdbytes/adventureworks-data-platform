@@ -160,10 +160,10 @@ def report_layout(kind, sample_filters=True):
                 [
                     card(
                         {
-                            "executive": "Revenue by month",
+                            "executive": "Revenue By Month",
                             "wholesale": "Top Resellers Leaderboard",
-                            "growth": "Monthly revenue comparison",
-                            "customers": "Retail customers by region",
+                            "growth": "Monthly Revenue Comparison",
+                            "customers": "Retail Customers By Region",
                         }[kind],
                         [
                             graph(f"{kind}-primary"),
@@ -182,10 +182,10 @@ def report_layout(kind, sample_filters=True):
                     ),
                     card(
                         {
-                            "executive": "Revenue by channel",
-                            "wholesale": "Wholesale product mix",
-                            "growth": "Month-over-month revenue growth",
-                            "customers": "Retail customer age distribution",
+                            "executive": "Revenue By Channel",
+                            "wholesale": "Wholesale Product Mix",
+                            "growth": "Month-Over-Month Revenue Growth",
+                            "customers": "Retail Customer Age Distribution",
                         }[kind],
                         [graph(f"{kind}-secondary")],
                     ),

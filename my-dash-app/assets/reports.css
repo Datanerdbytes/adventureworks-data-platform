@@ -362,3 +362,30 @@ body.sidebar-collapsed .submenu-toggle {
 .customer-kpis .kpi-yoy {
   margin-top: auto;
 }
+
+#customers-map-controls:not([hidden]) {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+#customers-map-controls .field {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* Responsive Plotly sets height:100%; every ancestor needs a real height. */
+.customer-chart-frame {
+  height: 400px;
+  width: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.customer-chart-loading {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
