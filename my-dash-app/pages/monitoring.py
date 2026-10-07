@@ -55,7 +55,7 @@ def layout():
                 className="filters",
             ),
             html.Div(id="monitoring-metrics", className="metrics three"),
-            card("Run duration", [graph("monitoring-chart")]),
+            card("Run Duration", [graph("monitoring-chart")]),
             card("Execution history", [grid("monitoring-grid")]),
             html.P(id="monitoring-status", role="status", className="muted"),
         ]

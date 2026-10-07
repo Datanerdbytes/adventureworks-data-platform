@@ -66,10 +66,6 @@ def layout():
                 ],
                 className="executive-global-filters",
             ),
-            html.P(
-                "Filters apply to all five KPIs, both charts, and the detail table. Dates use calendar periods, not fiscal periods.",
-                className="muted",
-            ),
             html.P(id="executive-filter-status", role="status", className="muted"),
             html.Div(
                 [
@@ -91,7 +87,7 @@ def layout():
                         [
                             card(
                                 html.Span(
-                                    "Revenue by month", id="executive-chart-title"
+                                    "Revenue By Month", id="executive-chart-title"
                                 ),
                                 [graph("executive-primary")],
                                 html.Details(
@@ -110,11 +106,11 @@ def layout():
                                                     id="executive-chart-type",
                                                     options=[
                                                         {
-                                                            "label": "Revenue line",
+                                                            "label": "Revenue Line",
                                                             "value": "line",
                                                         },
                                                         {
-                                                            "label": "Revenue + margin",
+                                                            "label": "Revenue + Margin",
                                                             "value": "dual",
                                                         },
                                                     ],
@@ -131,7 +127,7 @@ def layout():
                             ),
                             card(
                                 html.Span(
-                                    "Revenue by channel",
+                                    "Revenue By Channel",
                                     id="executive-breakdown-title",
                                 ),
                                 [graph("executive-secondary")],
@@ -153,15 +149,15 @@ def layout():
                                                     id="executive-breakdown-type",
                                                     options=[
                                                         {
-                                                            "label": "Revenue by channel · Bars",
+                                                            "label": "Revenue By Channel · Bars",
                                                             "value": "bar",
                                                         },
                                                         {
-                                                            "label": "Channel split · Donut",
+                                                            "label": "Channel Split · Donut",
                                                             "value": "donut",
                                                         },
                                                         {
-                                                            "label": "Product mix · Treemap",
+                                                            "label": "Product Mix · Treemap",
                                                             "value": "treemap",
                                                         },
                                                     ],
@@ -640,9 +636,9 @@ def populate_report(
 )
 def monthly_chart_title(chart_type):
     return (
-        "Monthly revenue & gross profit margin"
+        "Monthly Revenue & Gross Profit Margin"
         if chart_type == "dual"
-        else "Revenue by month"
+        else "Revenue By Month"
     )
 
 
@@ -652,9 +648,9 @@ def monthly_chart_title(chart_type):
 )
 def breakdown_chart_title(chart_type):
     return {
-        "donut": "Omnichannel sales split",
-        "treemap": "Revenue by category & subcategory",
-    }.get(chart_type, "Revenue by channel")
+        "donut": "Omnichannel Sales Split",
+        "treemap": "Revenue By Category & Subcategory",
+    }.get(chart_type, "Revenue By Channel")
 
 
 def product_performance_card():

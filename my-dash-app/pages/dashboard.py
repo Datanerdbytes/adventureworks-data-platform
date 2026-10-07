@@ -41,7 +41,7 @@ def layout():
             html.Div(
                 [
                     card(
-                        "Pipeline activity",
+                        "Pipeline Activity",
                         [
                             html.P(
                                 "Rows processed · September 30, 2026", className="muted"

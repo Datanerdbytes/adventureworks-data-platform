@@ -74,7 +74,7 @@ class DayTypeTests(unittest.TestCase):
             result = populate_primary(
                 "day-type", CATALOG, 2026, "Q1", "Reseller", "Bikes", "Road Bikes"
             )
-            self.assertEqual(result[1], "Weekend vs. Weekday Sales Volume")
+            self.assertEqual(result[1], "Weekend Vs. Weekday Sales Volume")
             self.assertEqual(
                 daily.call_args.args[2:],
                 (2026, "Q1", "Reseller", "Bikes", "Road Bikes"),

@@ -48,10 +48,6 @@ def layout():
                 dcc.Link("← Dashboard overview", href="/dashboard", className="button"),
             ),
             filter_layout(PREFIX),
-            html.P(
-                "Filters apply to all five KPIs, both charts, and the table. Comparisons use historical baselines outside the selected period. QoQ uses the latest selected quarter; YoY uses the latest selected year (same quarter when selected). Run rate is trailing 30-day revenue ending on the latest selected sales date. Partial periods use available sales.",
-                className="muted",
-            ),
             html.Div(
                 [
                     dcc.Loading(
@@ -95,10 +91,6 @@ def ledger_card():
     return card(
         "Granular Seasonality & Pacing Ledger",
         [
-            html.P(
-                "Revenue and weekday/weekend sales volumes are USD amounts. Export includes the rows matching the grid filters, in their current sort order.",
-                className="muted",
-            ),
             table,
         ],
         dbc.Button(
@@ -307,7 +299,7 @@ def populate_growth(
                 ):
                     row[key] = float(item[key]) if item.get(key) is not None else None
                 rows.append(row)
-            status = "MoM compares the preceding calendar month with the same product/channel filters. Missing months and nonpositive baselines show —. CSV exports numeric values and sortable YYYY-MM periods."
+            status = "MoM: previous calendar month · — indicates an unavailable growth baseline"
             return (
                 rows,
                 columns,
@@ -400,7 +392,7 @@ def populate_scorecards(catalog, year, quarter, channel, category, subcategory):
 
 def primary_chart_card():
     return card(
-        html.Span("Monthly revenue comparison", id="growth-primary-title"),
+        html.Span("Monthly Revenue Comparison", id="growth-primary-title"),
         [
             graph("growth-primary"),
             html.P(id="growth-primary-status", role="status", className="muted"),
@@ -419,11 +411,11 @@ def primary_chart_card():
                             id="growth-primary-type",
                             options=[
                                 {
-                                    "label": "Monthly revenue comparison · Line",
+                                    "label": "Monthly Revenue Comparison · Line",
                                     "value": "line",
                                 },
                                 {
-                                    "label": "Weekend vs. Weekday Sales Volume · Bars",
+                                    "label": "Weekend Vs. Weekday Sales Volume · Bars",
                                     "value": "day-type",
                                 },
                             ],
@@ -502,9 +494,9 @@ def populate_primary(
     chart_type, catalog, year, quarter, channel, category, subcategory
 ):
     title = (
-        "Weekend vs. Weekday Sales Volume"
+        "Weekend Vs. Weekday Sales Volume"
         if chart_type == "day-type"
-        else "Monthly revenue comparison"
+        else "Monthly Revenue Comparison"
     )
     if catalog is None:
         return empty_figure("Waiting for warehouse filters"), title, ""
@@ -520,7 +512,7 @@ def populate_primary(
             return (
                 day_type_figure(rows),
                 title,
-                "Total sales amount by order-date weekday/weekend; totals are not normalized by number of days. Use Sales channel to compare Internet and Reseller behavior.",
+                "Sales totals · Not normalized by number of days",
             )
         values = load_executive_report(*location, *normalized)
         first, _, _, _ = render_growth(values, values)
@@ -537,7 +529,7 @@ def populate_primary(
 
 def secondary_chart_card():
     return card(
-        html.Span("Month-over-month revenue growth", id="growth-secondary-title"),
+        html.Span("Month-Over-Month Revenue Growth", id="growth-secondary-title"),
         [
             graph("growth-secondary"),
             html.P(id="growth-secondary-status", role="status", className="muted"),
@@ -556,7 +548,7 @@ def secondary_chart_card():
                             id="growth-secondary-type",
                             options=[
                                 {
-                                    "label": "Month-over-month revenue growth · Bars",
+                                    "label": "Month-Over-Month Revenue Growth · Bars",
                                     "value": "growth",
                                 },
                                 {
@@ -647,7 +639,7 @@ def populate_secondary(
     title = (
         "Annual Seasonality Peak Matrix"
         if chart_type == "matrix"
-        else "Month-over-month revenue growth"
+        else "Month-Over-Month Revenue Growth"
     )
     if catalog is None:
         return empty_figure("Waiting for warehouse filters"), title, ""
@@ -668,7 +660,7 @@ def populate_secondary(
             return (
                 seasonality_matrix_figure(rows),
                 title,
-                f"{scope} · Total units sold, not a daily average. Blank months have no matching data.",
+                f"{scope} · Total units sold",
             )
         values = load_executive_report(*location, *normalized)
         baseline = (
