@@ -1,8 +1,10 @@
-"""Phase-one workspace overview: illustrative content, no warehouse access."""
+"""Configured workspace summary with sample sections and no warehouse access."""
 
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, callback, dcc, html
+from dash.exceptions import PreventUpdate
+from flask import g
 from components import card, heading, icon
 
 dash.register_page(
@@ -142,20 +144,12 @@ def layout():
         "Workspace Summary",
         [
             html.Dl(
-                [
-                    html.Div([html.Dt(label), html.Dd(value)])
-                    for label, value in (
-                        ("Workspace", "AdventureWorks Analytics"),
-                        ("Owner", "Sample Workspace Owner"),
-                        ("Purpose", "Sales & Customer Intelligence"),
-                        ("Access", "Internal Business Team · Sample"),
-                    )
-                ],
+                id="workspace-summary-details",
                 className="workspace-summary-details",
             )
         ],
         "workspace-summary",
-        sample_badge(),
+        dbc.Badge("Verified Workspace", color=None, className="badge"),
     )
     freshness = section(
         "Data Freshness",
@@ -320,7 +314,8 @@ def layout():
                 ),
             ),
             html.Div(
-                sample_badge("Phase 1 · Mock Data"), className="workspace-preview-label"
+                sample_badge("Workspace Metadata · Sample Sections"),
+                className="workspace-preview-label",
             ),
             html.Nav(
                 [
@@ -345,7 +340,7 @@ def layout():
                 className="workspace-content-grid",
             ),
             html.P(
-                "Phase-one preview · Workspace details, freshness, saved views, and quality notices are sample content.",
+                "Workspace Summary uses membership records and verified sign-in. Freshness, saved views, quality notices, and the glossary remain sample content.",
                 className="workspace-preview-footer",
             ),
         ],
@@ -370,3 +365,27 @@ def filter_saved_views(team):
 )
 def search_definitions(search):
     return definition_cards(search)
+
+
+@callback(
+    Output("workspace-summary-details", "children"),
+    Input("app-location", "pathname"),
+)
+def populate_workspace_summary(path):
+    if path != "/workspace":
+        raise PreventUpdate
+    workspace = getattr(g, "workspace", None)
+    username = getattr(g, "workspace_username", None)
+    if not workspace or not username:
+        raise PreventUpdate
+    return [
+        html.Div([html.Dt(label), html.Dd(value)])
+        for label, value in (
+            ("Workspace", workspace["name"]),
+            ("Responsible Team", workspace["responsible_team"]),
+            ("Owners", ", ".join(workspace["owners"])),
+            ("Purpose", workspace["purpose"]),
+            ("Signed In As", username),
+            ("Your Role", workspace["role"].replace("_", " ").title()),
+        )
+    ]

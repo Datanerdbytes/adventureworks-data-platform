@@ -1,8 +1,10 @@
 """Local demo entrypoint: uv run python my-dash-app/app.py."""
 
+import os
+
 from dash import Dash, Input, Output, clientside_callback, dcc, html, page_container
 from flask import Flask, Response, g, has_request_context, render_template
-from auth import install_auth, configure_auth
+from auth import install_auth
 from components import icon
 from analytics import REPORTS
 from revenue_kpis import init_kpi_cache
@@ -25,8 +27,8 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="AdventureWorks Analytics",
     update_title=None,
+    assets_ignore=r"auth\.js",
 )
-configure_auth(app)
 
 
 @server.get("/theme.css")
@@ -35,8 +37,18 @@ def theme_css():
 
 
 app.index_string = app.index_string.replace(
-    "{%css%}", '<link rel="stylesheet" href="/theme.css">{%css%}'
+    "{%css%}",
+    '<link rel="stylesheet" href="/theme.css"><script src="/assets/auth.js"></script>{%css%}',
 )
+
+app.index_string = app.index_string.replace(
+    "<body>", '<body class="auth-blocked">'
+).replace(
+    "{%app_entry%}",
+    '<section id="auth-startup" role="status"><h1>Connecting to Your Workspace</h1>'
+    '<p id="auth-status">Verifying your session…</p></section>{%app_entry%}',
+)
+app.renderer = "window.awAuthStart(function() { new DashRenderer(); });"
 
 
 def serve_layout():
@@ -45,6 +57,10 @@ def serve_layout():
         if has_request_context()
         else "Workspace member"
     )
+    workspace = getattr(g, "workspace", None) if has_request_context() else None
+    context = getattr(g, "workspace_context", {}) if has_request_context() else {}
+    role = workspace["role"] if workspace else ""
+    can_admin = role in {"owner", "admin", "platform_admin"}
     initials = "".join(
         part[0] for part in username.replace("@", " ").replace(".", " ").split()[:2]
     ).upper()
@@ -89,26 +105,6 @@ def serve_layout():
                         href="/dashboard",
                         className="brand",
                     ),
-                    html.Div(
-                        [
-                            dcc.Link(
-                                "AdventureWorks Workspace",
-                                href="/workspace",
-                                className="workspace-label",
-                            ),
-                            html.Span(
-                                "Demo data",
-                                id="workspace-data-label",
-                                className="badge demo",
-                            ),
-                            html.Span(
-                                "AW",
-                                className="avatar",
-                                **{"aria-label": "AdventureWorks demo workspace"},
-                            ),
-                        ],
-                        className="header-end",
-                    ),
                 ],
                 className="app-header",
             ),
@@ -128,12 +124,28 @@ def serve_layout():
                             html.Div(
                                 [
                                     html.Span("A", className="project-icon"),
-                                    html.Div(
-                                        [
-                                            html.Strong("AdventureWorks"),
-                                            html.Small("Local demo", className="muted"),
-                                        ],
-                                        className="nav-label",
+                                    html.Strong(
+                                        workspace["name"] if workspace else "Workspace",
+                                        className="workspace-name nav-label",
+                                        title=(
+                                            workspace["name"]
+                                            if workspace
+                                            else "Workspace"
+                                        ),
+                                    ),
+                                    html.Button(
+                                        html.Img(
+                                            src="/assets/icons/sidebar-chevron.svg",
+                                            alt="",
+                                        ),
+                                        id="sidebar-toggle",
+                                        className="sidebar-collapse-toggle",
+                                        title="Collapse Sidebar",
+                                        **{
+                                            "aria-label": "Collapse Sidebar",
+                                            "aria-controls": "app-sidebar",
+                                            "aria-expanded": "true",
+                                        },
                                     ),
                                 ],
                                 className="workspace-card",
@@ -143,6 +155,24 @@ def serve_layout():
                     html.P("PROJECT", className="eyebrow nav-label"),
                     html.Nav(
                         [
+                            *(
+                                [
+                                    dcc.Link(
+                                        [
+                                            icon("settings"),
+                                            html.Span(
+                                                "Workspace Admin",
+                                                className="nav-label",
+                                            ),
+                                        ],
+                                        href="/workspace/admin",
+                                        className="nav-link",
+                                        title="Workspace Administration",
+                                    )
+                                ]
+                                if can_admin
+                                else []
+                            ),
                             dcc.Link(
                                 [
                                     icon("dashboard"),
@@ -219,13 +249,6 @@ def serve_layout():
                         [
                             html.Div(
                                 [
-                                    html.Span(className="status-dot"),
-                                    html.Span("Demo workspace", className="nav-label"),
-                                ],
-                                className="sidebar-status",
-                            ),
-                            html.Div(
-                                [
                                     html.Div(
                                         [
                                             html.Div(
@@ -246,16 +269,12 @@ def serve_layout():
                                                 className="account-option",
                                             ),
                                             html.Button(
-                                                "Toggle sidebar",
-                                                id="sidebar-toggle",
+                                                "Sign Out",
+                                                id="auth-sign-out",
                                                 className="account-option",
-                                                **{
-                                                    "aria-controls": "app-sidebar",
-                                                    "aria-expanded": "true",
-                                                },
                                             ),
                                             html.P(
-                                                "Signed in with your configured workspace credentials.",
+                                                "Signed in with Supabase. Workspace roles are verified by the server.",
                                                 className="account-hint",
                                             ),
                                         ],
@@ -272,7 +291,9 @@ def serve_layout():
                                             html.Span(
                                                 [
                                                     html.Strong(username),
-                                                    html.Small("Workspace member"),
+                                                    html.Small(
+                                                        role.replace("_", " ").title()
+                                                    ),
                                                 ],
                                                 className="account-label nav-label",
                                             ),
@@ -311,7 +332,7 @@ def serve_layout():
                         className="breadcrumb",
                     ),
                     html.Div(page_container, className="page-surface"),
-                    html.Footer("AdventureWorks Analytics · Local demonstration"),
+                    html.Footer("AdventureWorks Analytics · Shared Analytics"),
                 ],
                 id="main-content",
                 tabIndex=-1,
@@ -330,8 +351,8 @@ clientside_callback(
     const reports = {executive:'Revenue & Sales',wholesale:'Wholesale & Resellers',growth:'Growth & Seasonality',customers:'Customers & Regions'};
     const report = reports[(path || '').split('/')[2]];
     window.awSidebar?.navigate(path);
-    return [...keys.map(k => k === key ? 'nav-link active' : 'nav-link'),
-      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? 'Workspace Overview' : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
+    return [...keys.map(k => k === key && !(k === 'workspace' && path === '/workspace/admin') ? 'nav-link active' : 'nav-link'),
+      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? (path === '/workspace/admin' ? 'Workspace Administration' : 'Workspace Overview') : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
 }""",
     *[
         Output(f"nav-{key}", "className")
@@ -344,12 +365,6 @@ clientside_callback(
     """function(collapsed) {window.awSidebar?.apply(!!collapsed); return !!collapsed;}""",
     Output("sidebar-sync", "children"),
     Input("sidebar-preference", "data"),
-)
-
-clientside_callback(
-    "function(path) { return path === '/workspace' ? 'Mock data · Phase 1' : path === '/dashboard/customers' ? 'Warehouse data' : path === '/dashboard/executive' ? 'Warehouse data' : ['/dashboard/wholesale', '/dashboard/growth'].includes(path) ? 'Warehouse data' : 'Demo data'; }",
-    Output("workspace-data-label", "children"),
-    Input("app-location", "pathname"),
 )
 
 if __name__ == "__main__":

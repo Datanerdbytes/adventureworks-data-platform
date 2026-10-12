@@ -1,8 +1,11 @@
 import sys
 import unittest
+import multiprocessing
+import tempfile
+import threading
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
@@ -11,6 +14,104 @@ from revenue_kpis import kpi_cards, kpi_sql
 
 
 class RevenueKpiTests(unittest.TestCase):
+    def test_concurrent_worker_cache_misses_submit_one_query(self):
+        from flask import Flask
+        from revenue_kpis import cache, load_executive_report
+
+        context = multiprocessing.get_context("fork")
+        count = context.Value("i", 0)
+        barrier = context.Barrier(3)
+        results = context.Queue()
+        server = Flask("coalescing-test")
+        with tempfile.TemporaryDirectory() as directory:
+            cache.init_app(
+                server, config={"CACHE_TYPE": "FileSystemCache", "CACHE_DIR": directory}
+            )
+            lock_dir = Path(directory) / "locks"
+            lock_dir.mkdir()
+            server.extensions["executive_query_lock_dir"] = lock_dir
+
+            def query(*args, **kwargs):
+                with count.get_lock():
+                    count.value += 1
+                job = MagicMock()
+
+                def result(**kwargs):
+                    threading.Event().wait(0.1)
+                    return iter([{"source_rows": 42}])
+
+                job.result.side_effect = result
+                return job
+
+            client = MagicMock()
+            client.__enter__.return_value.query.side_effect = query
+
+            def fetch():
+                try:
+                    barrier.wait(timeout=5)
+                    with server.app_context():
+                        results.put(
+                            load_executive_report("test-project", "test_dataset")[
+                                "source_rows"
+                            ]
+                        )
+                except Exception as error:
+                    results.put(type(error).__name__)
+
+            with patch("revenue_kpis.bigquery.Client", return_value=client):
+                workers = [context.Process(target=fetch) for _ in range(3)]
+                try:
+                    for worker in workers:
+                        worker.start()
+                    for worker in workers:
+                        worker.join(timeout=10)
+                        self.assertEqual(worker.exitcode, 0)
+                    self.assertEqual(
+                        [results.get(timeout=1) for _ in workers], [42, 42, 42]
+                    )
+                    self.assertEqual(count.value, 1)
+                finally:
+                    for worker in workers:
+                        if worker.is_alive():
+                            worker.terminate()
+                            worker.join()
+                    results.close()
+
+    def test_chart_menus_only_trigger_their_own_chart_and_title(self):
+        from dash._callback import GLOBAL_CALLBACK_MAP
+
+        callbacks = {**GLOBAL_CALLBACK_MAP, **app.callback_map}
+        for menu, expected in (
+            (
+                "executive-chart-type",
+                {"executive-primary.figure", "executive-chart-title.children"},
+            ),
+            (
+                "executive-breakdown-type",
+                {"executive-secondary.figure", "executive-breakdown-title.children"},
+            ),
+        ):
+            triggered = {
+                output
+                for output, metadata in callbacks.items()
+                if any(item["id"] == menu for item in metadata["inputs"])
+            }
+            self.assertEqual(triggered, expected)
+        for output in ("executive-primary.figure", "executive-secondary.figure"):
+            self.assertTrue(
+                {
+                    f"executive-{name}"
+                    for name in (
+                        "year",
+                        "quarter",
+                        "channel",
+                        "category",
+                        "subcategory",
+                    )
+                }
+                <= {item["id"] for item in callbacks[output]["inputs"]}
+            )
+
     def test_each_kpi_has_its_own_loading_target(self):
         from dash import dcc
         from revenue_kpis import KPI_FIELDS
@@ -33,7 +134,7 @@ class RevenueKpiTests(unittest.TestCase):
             self.assertIsInstance(spinner, dcc.Loading)
             self.assertEqual(spinner.children.id, f"executive-kpi-slot-{key}")
         result = update_report(None, *["__all__"] * 5, {})
-        self.assertEqual(len(result), 11)
+        self.assertEqual(len(result), 9)
         self.assertEqual(
             [card.id for card in result[:5]],
             [f"executive-kpi-{key}" for key, _, _ in KPI_FIELDS],

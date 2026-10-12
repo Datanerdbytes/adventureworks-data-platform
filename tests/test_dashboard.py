@@ -14,25 +14,27 @@ from pages import dashboard, monitoring, tables
 
 class DashboardTests(unittest.TestCase):
     def setUp(self):
+        from auth_fixtures import CONFIG, FakeGateway
+
         self.client = app.server.test_client()
-        self.config_patch = patch.dict(
-            app.server.config,
-            DASH_AUTH_USERNAME="test-member",
-            DASH_AUTH_PASSWORD="test-only-password",
-        )
+        self.client.set_cookie("aw_access", "approved")
+        self.config_patch = patch.dict(app.server.config, CONFIG)
         self.config_patch.start()
         self.addCleanup(self.config_patch.stop)
-        self.auth = {
-            "Authorization": "Basic "
-            + base64.b64encode(b"test-member:test-only-password").decode()
-        }
+        gateway_patch = patch.dict(
+            app.server.extensions, supabase_gateway_factory=FakeGateway
+        )
+        gateway_patch.start()
+        self.addCleanup(gateway_patch.stop)
+        self.auth = {}
 
     def test_routes_and_shell(self):
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Turn your data", response.data)
+        anonymous = app.server.test_client()
+        self.assertEqual(anonymous.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/").status_code, 302)
         for route in (
             "/dashboard",
+            "/workspace",
             "/monitoring",
             "/tables",
             "/settings",
@@ -40,32 +42,23 @@ class DashboardTests(unittest.TestCase):
             "/_dash-layout",
             "/_dash-dependencies",
         ):
-            self.assertEqual(self.client.get(route, headers=self.auth).status_code, 200)
-            response = self.client.get(route)
-            self.assertEqual(response.status_code, 401)
-            self.assertIn("Basic", response.headers["WWW-Authenticate"])
+            self.assertEqual(self.client.get(route).status_code, 200)
+            self.assertEqual(anonymous.get(route).status_code, 401)
 
     def test_auth_rejects_invalid_headers(self):
-        for header in (
-            "Bearer abc",
-            "Basic !!!",
-            "Basic YQ==",
-            "Basic /w==",
-            "Basic " + base64.b64encode(b"test-member:wrong").decode(),
-        ):
+        anonymous = app.server.test_client()
+        for header in ("Bearer abc", "Basic !!!", "Basic YQ=="):
             self.assertEqual(
-                self.client.get(
+                anonymous.get(
                     "/_dash-layout", headers={"Authorization": header}
                 ).status_code,
                 401,
             )
 
     def test_auth_fails_closed_without_config(self):
-        with patch.dict(app.server.config, DASH_AUTH_PASSWORD=""):
-            self.assertEqual(
-                self.client.get("/dashboard", headers=self.auth).status_code, 503
-            )
-            self.assertEqual(self.client.get("/").status_code, 200)
+        with patch.dict(app.server.config, SUPABASE_PUBLIC_KEY=""):
+            self.assertEqual(self.client.get("/dashboard").status_code, 503)
+            self.assertEqual(app.server.test_client().get("/").status_code, 200)
 
     def test_callback_cannot_spoof_public_path(self):
         body = {
@@ -73,19 +66,22 @@ class DashboardTests(unittest.TestCase):
             "inputs": [{"id": "app-location", "property": "pathname", "value": "/"}],
         }
         self.assertEqual(
-            self.client.post("/_dash-update-component", json=body).status_code, 401
+            app.server.test_client()
+            .post("/_dash-update-component", json=body)
+            .status_code,
+            401,
         )
         self.assertEqual(
             self.client.post(
                 "/_dash-update-component",
                 json=body,
-                headers={**self.auth, "Origin": "https://untrusted.example"},
+                headers={"Origin": "https://untrusted.example"},
             ).status_code,
             403,
         )
 
     def test_authenticated_callback_and_identity(self):
-        self.client.get("/_dash-layout", headers=self.auth)
+        self.client.get("/_dash-layout")
         output = next(key for key in app.callback_map if "tables-grid.rowData" in key)
         outputs = [
             {"id": "tables-grid", "property": prop}
@@ -107,22 +103,21 @@ class DashboardTests(unittest.TestCase):
             "changedPropIds": ["tables-selector.value"],
         }
         response = self.client.post(
-            "/_dash-update-component",
-            json=body,
-            headers={**self.auth, "Origin": "http://localhost"},
+            "/_dash-update-component", json=body, headers={"Origin": "http://localhost"}
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json["response"]["tables-grid"]["rowData"]), 48)
-        layout = self.client.get("/_dash-layout", headers=self.auth)
-        self.assertIn(b"Account for test-member", layout.data)
-        self.assertNotIn(b"test-only-password", layout.data)
+        layout = self.client.get("/_dash-layout")
+        self.assertIn(b"Account for owner@example.test", layout.data)
+        self.assertNotIn(b"test-public-key", layout.data)
         self.assertEqual(layout.headers["Cache-Control"], "private, no-store")
 
     def test_public_assets_do_not_expose_dashboard(self):
-        with self.client.get("/assets/landing.css") as response:
+        anonymous = app.server.test_client()
+        with anonymous.get("/assets/landing.css") as response:
             self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.client.get("/assets/sidebar.js").status_code, 401)
-        self.assertEqual(self.client.get("/_dash-layout?pathname=/").status_code, 401)
+        self.assertEqual(anonymous.get("/assets/sidebar.js").status_code, 401)
+        self.assertEqual(anonymous.get("/_dash-layout?pathname=/").status_code, 401)
 
     def test_monitoring_filters_and_preferences(self):
         figure, rows, columns, metrics, status, options = monitoring.populate(

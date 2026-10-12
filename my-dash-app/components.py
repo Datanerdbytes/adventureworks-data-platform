@@ -30,6 +30,7 @@ def graph(identifier):
             className="chart",
         ),
         type="circle",
+        parent_className="chart-loading",
     )
 
 

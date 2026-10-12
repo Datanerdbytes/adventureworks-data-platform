@@ -153,7 +153,8 @@ dd {
   font-weight: 500;
   text-align: right;
 }
-.chart {
+.chart,
+.chart-loading {
   height: 290px;
   width: 100%;
 }

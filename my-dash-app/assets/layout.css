@@ -334,3 +334,47 @@ body.sidebar-collapsed .sidebar-status {
       color 150ms;
   }
 }
+
+/* Compact read-only workspace identity. */
+.workspace-card {
+  padding: 12px;
+  gap: 8px;
+}
+.workspace-card .workspace-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-collapse-toggle {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+}
+.sidebar-collapse-toggle:hover {
+  background: var(--background);
+}
+.sidebar-collapse-toggle img {
+  width: 20px;
+  height: 20px;
+}
+@media (min-width: 768px) {
+  body.sidebar-collapsed .workspace-card {
+    padding: 0;
+    justify-content: center;
+  }
+  body.sidebar-collapsed .workspace-card .project-icon {
+    display: none;
+  }
+  body.sidebar-collapsed .sidebar-collapse-toggle img {
+    transform: rotate(180deg);
+  }
+}

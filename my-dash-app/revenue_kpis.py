@@ -2,12 +2,16 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
+import fcntl
+import hashlib
 import os
+from pathlib import Path
 import re
 import tempfile
 
 import dash_bootstrap_components as dbc
 from flask_caching import Cache
+from flask import current_app
 from google.cloud import bigquery
 from components import metric
 
@@ -22,11 +26,20 @@ KPI_FIELDS = (
 
 
 def init_kpi_cache(server):
+    # Gunicorn workers must share the cache and locks to coalesce cold loads.
+    namespace = hashlib.sha256(
+        str(Path(__file__).resolve().parent).encode()
+    ).hexdigest()[:16]
+    cache_dir = Path(tempfile.gettempdir()) / f"adventureworks-kpis-{namespace}"
+    cache_dir.mkdir(mode=0o700, exist_ok=True)
+    lock_dir = Path(tempfile.gettempdir()) / f"adventureworks-query-locks-{namespace}"
+    lock_dir.mkdir(mode=0o700, exist_ok=True)
+    server.extensions["executive_query_lock_dir"] = lock_dir
     cache.init_app(
         server,
         config={
             "CACHE_TYPE": "FileSystemCache",
-            "CACHE_DIR": tempfile.mkdtemp(prefix="adventureworks-kpis-"),
+            "CACHE_DIR": str(cache_dir),
             "CACHE_DEFAULT_TIMEOUT": 60,
             "CACHE_THRESHOLD": 10,
         },
@@ -275,8 +288,33 @@ def filter_parameters(
     ]
 
 
-@cache.memoize(timeout=60)
 def load_executive_report(
+    project,
+    dataset,
+    year=None,
+    quarter=None,
+    channel=None,
+    category=None,
+    subcategory=None,
+):
+    filters = (project, dataset, year, quarter, channel, category, subcategory)
+    # Bounded lock stripes avoid accumulating a file for every filter selection.
+    stripe = int(hashlib.sha256(repr(filters).encode()).hexdigest(), 16) % 64
+    lock_path = (
+        current_app.extensions["executive_query_lock_dir"] / f"query-{stripe}.lock"
+    )
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            # Check memoization *after* acquiring the cross-process lock, so
+            # waiting callbacks consume the result written by the first one.
+            return _load_executive_report(*filters)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+@cache.memoize(timeout=60)
+def _load_executive_report(
     project,
     dataset,
     year=None,

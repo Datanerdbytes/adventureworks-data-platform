@@ -1,4 +1,4 @@
-"""Embedded-browser login keeps the dashboard and callbacks protected."""
+"""Offline authentication/membership protection; no external accounts or queries."""
 
 import sys
 import unittest
@@ -7,88 +7,269 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
+from auth_fixtures import CONFIG, FakeGateway, WORKSPACE
 
 
 class LoginTests(unittest.TestCase):
     def setUp(self):
-        self.config = patch.dict(
-            app.server.config,
-            DASH_AUTH_USERNAME="login-test",
-            DASH_AUTH_PASSWORD="test-password",
-        )
-        self.config.start()
-        self.addCleanup(self.config.stop)
         self.client = app.server.test_client()
+        FakeGateway.calls = []
+        for mapping, values in (
+            (app.server.config, CONFIG),
+            (app.server.extensions, {"supabase_gateway_factory": FakeGateway}),
+        ):
+            item = patch.dict(mapping, values)
+            item.start()
+            self.addCleanup(item.stop)
+        self.origin = {"Origin": "http://localhost"}
 
-    def sign_in(
-        self,
-        password="test-password",
-        origin="http://localhost",
-        destination="/dashboard/executive",
-    ):
-        self.client.get("/login")
-        with self.client.session_transaction() as session:
-            csrf = session["login_csrf"]
+    def sync(self, token="approved", next="/workspace"):
         return self.client.post(
-            "/login",
-            data={
-                "username": "login-test",
-                "password": password,
-                "csrf": csrf,
-                "next": destination,
-            },
-            headers={"Origin": origin},
+            "/auth/session",
+            json={"access_token": token, "next": next},
+            headers=self.origin,
         )
 
-    def test_page_redirect_and_api_protection(self):
-        response = self.client.get(
-            "/dashboard/executive", headers={"Accept": "text/html"}
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("/login?", response.location)
+    def test_revoked_sign_in_reports_revocation_and_clears_cookie(self):
+        self.sync()
+        response = self.sync(token="revoked")
+        self.assertFalse(response.json["approved"])
+        self.assertEqual(response.json["requestStatus"], "revoked")
+        self.assertIn("Max-Age=0", response.headers.get("Set-Cookie", ""))
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
 
-    def test_login_session_and_credentials_rotation(self):
-        response = self.sign_in()
-        self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.location, "/dashboard/executive")
-        self.assertIn("HttpOnly", response.headers["Set-Cookie"])
-        self.assertIn("SameSite=Lax", response.headers["Set-Cookie"])
-        self.assertEqual(self.client.get("/_dash-layout").status_code, 200)
-        with self.client.session_transaction() as session:
-            self.assertNotIn("test-password", str(dict(session)))
-        with patch.dict(app.server.config, DASH_AUTH_PASSWORD="rotated"):
-            self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
+    def test_public_auth_pages_and_safe_redirect(self):
+        for route in (
+            "/login",
+            "/signup",
+            "/auth/callback",
+            "/auth/recovery",
+            "/auth/access-pending",
+            "/auth/config",
+        ):
+            self.assertEqual(self.client.get(route).status_code, 200)
+        self.assertEqual(
+            self.sync(next="//attacker.example").json["next"], "/dashboard"
+        )
+        config = self.client.get("/auth/config").json
+        self.assertEqual(set(config), {"url", "publicKey", "providers"})
+        self.assertNotIn("SECRET", str(config))
 
-    def test_invalid_password_origin_csrf_and_redirect(self):
-        self.assertEqual(self.sign_in(password="wrong").status_code, 401)
+    def test_registration_target_is_public_but_bounded_and_not_access(self):
+        response = self.client.get("/auth/registration?workspace=" + "a" * 48)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(response.json), {"code", "name"})
+        self.assertNotIn("aw_access", response.headers.get("Set-Cookie", ""))
+        self.assertEqual(
+            self.client.get("/auth/registration?workspace=forged").status_code, 400
+        )
+        self.assertFalse(
+            any(name == "claim_workspace_approvals" for name, _ in FakeGateway.calls)
+        )
+
+    def test_unapproved_sync_reports_request_status_without_claiming(self):
+        response = self.sync("no-member")
+        self.assertFalse(response.json["approved"])
+        self.assertEqual(response.json["requestStatus"], "pending")
+        self.assertFalse(
+            any(name == "claim_workspace_approvals" for name, _ in FakeGateway.calls)
+        )
+
+    def test_signup_is_email_only_and_login_offers_social_sign_in(self):
+        signup = self.client.get("/signup").get_data(as_text=True)
+        self.assertNotIn('data-provider="google"', signup)
+        self.assertNotIn('data-provider="github"', signup)
+        self.assertNotIn("Sign up with email →", signup)
+        login = self.client.get("/login").get_data(as_text=True)
+        self.assertIn('data-provider="google"', login)
+
+    def test_recovery_forms_are_public_and_do_not_grant_access(self):
+        request_form = self.client.get("/auth/recovery")
+        self.assertIn("Send Reset Link", request_form.get_data(as_text=True))
+        update_form = self.client.get("/auth/recovery?step=update")
+        html = update_form.get_data(as_text=True)
+        self.assertIn("Confirm New Password", html)
+        self.assertIn("Update Password", html)
+        self.assertIn("Request a New Reset Link", html)
+        self.assertNotIn("aw_access", update_form.headers.get("Set-Cookie", ""))
+        self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
+
+    def test_session_cookie_and_verified_workspace_summary(self):
+        response = self.sync()
+        cookie = response.headers.getlist("Set-Cookie")
+        self.assertTrue(
+            any(
+                "aw_access=" in item and "HttpOnly" in item and "SameSite=Lax" in item
+                for item in cookie
+            )
+        )
+        self.assertEqual(self.client.get("/workspace").status_code, 200)
+        self.client.get("/_dash-layout")
+        response = self.client.post(
+            "/_dash-update-component",
+            json={
+                "output": "workspace-summary-details.children",
+                "outputs": {"id": "workspace-summary-details", "property": "children"},
+                "inputs": [
+                    {
+                        "id": "app-location",
+                        "property": "pathname",
+                        "value": "/workspace",
+                    }
+                ],
+                "state": [],
+                "changedPropIds": ["app-location.pathname"],
+            },
+            headers=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("owner@example.test", response.get_data(as_text=True))
+        self.assertNotIn("access_token", response.get_data(as_text=True))
+        with self.client.session_transaction() as session:
+            self.assertEqual(dict(session), {"workspace_id": WORKSPACE["id"]})
+
+    def test_invalid_unconfirmed_unapproved_and_outage(self):
+        for token, expected in (
+            ("expired", 401),
+            ("tampered", 401),
+            ("unconfirmed", 403),
+            ("outage", 503),
+        ):
+            self.assertEqual(self.sync(token).status_code, expected)
+        result = self.sync("no-member")
+        self.assertEqual(result.json["approved"], False)
+        self.assertEqual(result.json["next"], "/auth/access-pending")
+        self.assertIsNone(self.client.get_cookie("aw_access"))
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
         self.assertEqual(
-            self.sign_in(origin="https://attacker.example").status_code, 403
+            self.client.get("/dashboard", headers={"Accept": "text/html"}).location,
+            "/login?next=%2Fdashboard",
         )
+
+    def test_mutations_require_exact_origin_and_no_token_fallback(self):
         self.assertEqual(
             self.client.post(
-                "/login",
-                data={"username": "login-test", "password": "test-password"},
-                headers={"Origin": "http://localhost"},
+                "/auth/session",
+                json={"access_token": "approved"},
+                headers={"Origin": "https://evil.test"},
             ).status_code,
             403,
         )
-        response = self.sign_in(destination="//attacker.example")
-        self.assertEqual(response.location, "/dashboard")
+        self.sync()
+        self.assertEqual(
+            self.client.post("/auth/session", json={}, headers=self.origin).status_code,
+            401,
+        )
+        self.assertEqual(self.client.delete("/auth/session").status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                "/auth/workspace", json={"workspace_id": "forged"}, headers=self.origin
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/auth/workspace",
+                json={"workspace_id": WORKSPACE["id"]},
+                headers=self.origin,
+            ).status_code,
+            200,
+        )
 
-    def test_expired_or_tampered_session_cannot_authorize(self):
-        self.sign_in()
+    def test_pending_sign_in_clears_previously_approved_app_session(self):
+        self.sync()
+        self.assertIsNotNone(self.client.get_cookie("aw_access"))
+        result = self.sync("no-member")
+        self.assertFalse(result.json["approved"])
+        self.assertIsNone(self.client.get_cookie("aw_access"))
         with self.client.session_transaction() as session:
-            session["credential_version"] = "invalid"
-        self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
-        self.client.set_cookie("session", "tampered")
+            self.assertEqual(dict(session), {})
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
 
-    def test_workspace_redirect_stays_protected(self):
-        response = self.client.get("/workspace", headers={"Accept": "text/html"})
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("next=%2Fworkspace", response.location)
-        signed_in = self.sign_in(destination="/workspace")
-        self.assertEqual(signed_in.location, "/workspace")
-        self.assertEqual(self.client.get("/workspace").status_code, 200)
+    def test_revocation_is_checked_on_every_request_and_logout(self):
+        self.sync()
+        self.assertEqual(self.client.get("/_dash-layout").status_code, 200)
+        self.client.set_cookie("aw_access", "no-member")
+        self.assertEqual(self.client.get("/_dash-layout").status_code, 403)
+        self.client.set_cookie("aw_access", "expired")
+        self.assertEqual(self.client.get("/_dash-dependencies").status_code, 401)
+        self.sync()
+        self.assertEqual(
+            self.client.delete("/auth/session", headers=self.origin).status_code, 200
+        )
+        self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
+
+    def test_viewer_cannot_admin_and_basic_auth_is_removed(self):
+        self.sync("viewer")
+        self.assertEqual(self.client.get("/workspace/admin").status_code, 403)
+        anonymous = app.server.test_client()
+        self.assertEqual(
+            anonymous.get(
+                "/_dash-layout", headers={"Authorization": "Basic dXNlcjpwYXNz"}
+            ).status_code,
+            401,
+        )
+        self.assertEqual(
+            anonymous.get("/workspace", headers={"Accept": "text/html"}).status_code,
+            302,
+        )
+
+    def test_configuration_errors_fail_closed_and_secure_cookie(self):
+        with patch.dict(app.server.config, AUTH_APP_ORIGIN="http://example.com"):
+            self.assertEqual(self.client.get("/auth/config").status_code, 503)
+        with patch.dict(app.server.config, SUPABASE_PUBLIC_KEY=""):
+            self.assertEqual(self.sync().status_code, 503)
+        with patch.dict(app.server.config, SESSION_COOKIE_SECURE=True):
+            self.assertTrue(
+                any(
+                    "Secure" in c
+                    for c in self.sync().headers.getlist("Set-Cookie")
+                    if "aw_access" in c
+                )
+            )
+
+    def test_forged_admin_callback_cannot_bypass_role(self):
+        from pages.workspace_admin import ACTION_INPUTS, STATE_FIELDS
+
+        self.sync("viewer")
+        self.client.get("/_dash-layout")
+        key = next(
+            k for k in app.callback_map if "workspace-admin-status.children" in k
+        )
+        FakeGateway.calls = []
+        response = self.client.post(
+            "/_dash-update-component",
+            json={
+                "output": key,
+                "outputs": [
+                    {"id": "workspace-admin-status", "property": "children"},
+                    {"id": "workspace-admin-reload", "property": "href"},
+                ],
+                "inputs": [
+                    {
+                        "id": "workspace-admin-" + name,
+                        "property": "n_clicks",
+                        "value": 1 if name == "change" else 0,
+                    }
+                    for name in ACTION_INPUTS
+                ],
+                "state": [
+                    {
+                        "id": "workspace-admin-" + name,
+                        "property": "value",
+                        "value": (
+                            "owner"
+                            if name == "request-role"
+                            else "attacker@example.test"
+                        ),
+                    }
+                    for name in STATE_FIELDS
+                ],
+                "changedPropIds": ["workspace-admin-change.n_clicks"],
+            },
+            headers=self.origin,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            any(name == "change_workspace_member" for name, _ in FakeGateway.calls)
+        )

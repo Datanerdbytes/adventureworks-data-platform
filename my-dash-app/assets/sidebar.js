@@ -7,6 +7,10 @@
     document
       .querySelector("#sidebar-toggle")
       ?.setAttribute("aria-expanded", String(!value));
+    const toggle = document.querySelector("#sidebar-toggle");
+    const label = value ? "Expand Sidebar" : "Collapse Sidebar";
+    toggle?.setAttribute("aria-label", label);
+    toggle?.setAttribute("title", label);
     window.dispatchEvent(new Event("resize"));
   }
   function account(open, restore = false) {
@@ -54,6 +58,7 @@
     if ((path || "").startsWith("/dashboard/")) submenu(true);
     document.querySelectorAll(".sidebar-navigation a").forEach((link) => {
       const active = link.getAttribute("href") === path;
+      link.classList.toggle("active", active);
       if (active) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
@@ -72,8 +77,7 @@
     } else if (!e.target.closest("#account-menu")) {
       account(false);
     }
-    if (e.target.closest("#account-menu a, #sidebar-toggle"))
-      account(false, true);
+    if (e.target.closest("#account-menu a")) account(false, true);
     if (e.target.closest("#sidebar-toggle, #settings-collapse")) {
       apply(!collapsed);
       window.dash_clientside.set_props("sidebar-preference", {
