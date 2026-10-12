@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+gcp-key.json
+.venv
+node_modules
+__pycache__
+*.pyc
+adventureworks_analytics
+logs

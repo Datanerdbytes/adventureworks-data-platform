@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" data-auth-mode="{{ mode }}" data-next="{{ next }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Account · AdventureWorks Analytics</title>
+    <link rel="stylesheet" href="/assets/landing.css" />
+    <link rel="stylesheet" href="/assets/auth.css" />
+    <script src="/assets/auth.js" defer></script>
+  </head>
+  <body class="landing-page auth-page">
+    {% if mode == "callback" %}
+    <main class="login-shell" aria-label="Session Verification">
+      <p id="auth-status" role="status" aria-live="polite"></p>
+    </main>
+    {% else %}
+    <main
+      class="login-shell{% if mode == 'login' %} auth-wide-shell{% endif %}"
+    >
+      <a class="login-home" href="/">← Back To Home</a>
+      <section
+        class="login-card{% if mode == 'login' %} auth-horizontal{% endif %}"
+        aria-labelledby="auth-title"
+      >
+        {% if mode == 'login' %}
+        <aside class="auth-brand-panel">
+          {% endif %}
+          <a
+            class="auth-brand"
+            href="/"
+            aria-label="AdventureWorks Analytics home"
+          >
+            <span class="auth-brand-mark" aria-hidden="true">AW</span>
+            <span class="auth-brand-name"
+              >AdventureWorks<span>ANALYTICS</span></span
+            >
+          </a>
+          {% if mode == 'login' %}
+          <svg
+            class="auth-panel-art"
+            viewBox="0 0 280 220"
+            fill="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <rect
+              x="8"
+              y="20"
+              width="264"
+              height="180"
+              rx="14"
+              fill="white"
+              fill-opacity="0.06"
+              stroke="white"
+              stroke-opacity="0.16"
+            />
+            <path
+              d="M32 64H248M32 100H248M32 136H248M32 172H248"
+              stroke="white"
+              stroke-opacity="0.1"
+            />
+            <rect x="42" y="131" width="24" height="41" rx="4" fill="#64B4EB" />
+            <rect x="86" y="111" width="24" height="61" rx="4" fill="#64B4EB" />
+            <rect x="130" y="89" width="24" height="83" rx="4" fill="#64B4EB" />
+            <rect
+              x="174"
+              y="102"
+              width="24"
+              height="70"
+              rx="4"
+              fill="#64B4EB"
+            />
+            <rect
+              x="218"
+              y="67"
+              width="24"
+              height="105"
+              rx="4"
+              fill="#64B4EB"
+            />
+            <path
+              d="M54 111L98 91L142 69L186 82L230 47"
+              stroke="#69D5C5"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="230" cy="47" r="5" fill="#69D5C5" />
+          </svg>
+          <p class="auth-panel-caption">Your Analytics Workspace</p>
+        </aside>
+        <div class="auth-form-panel">
+          {% endif %}
+          <h1 id="auth-title">
+            {% if mode == 'signup' %}Create Your Account{% elif mode ==
+            'recovery' %}{{ 'Set Your New Password' if request.args.get('step')
+            == 'update' else 'Reset Your Password' }}{% elif mode == 'pending'
+            %}Workspace Approval Required{% elif mode == 'callback' %}Completing
+            Sign-In{% else %}Welcome Back{% endif %}
+          </h1>
+          <p id="auth-status" role="status" aria-live="polite">
+            Connecting securely…
+          </p>
+          {% if mode in ['login','signup','recovery'] %}
+          <form id="auth-form" action="/login" method="post">
+            {% if mode != 'recovery' or request.args.get('step') != 'update' %}
+            <label for="auth-email">Email</label
+            ><input
+              id="auth-email"
+              name="email"
+              type="email"
+              autocomplete="username"
+              required
+              maxlength="254"
+            />
+            {% endif %} {% if mode != 'recovery' or request.args.get('step') ==
+            'update' %}
+            <div class="auth-password-label">
+              <label for="auth-password"
+                >{% if mode == 'recovery' %}New Password{% else %}Password{%
+                endif %}</label
+              >
+              {% if mode == 'login' %}<a href="/auth/recovery"
+                >Forgot Password?</a
+              >{% endif %}
+            </div>
+            <input
+              id="auth-password"
+              name="password"
+              type="password"
+              autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}"
+              required
+              minlength="{{ 1 if mode == 'login' else 12 }}"
+            />
+            {% if mode == 'recovery' and request.args.get('step') == 'update' %}
+            <label for="auth-password-confirmation">Confirm New Password</label>
+            <input
+              id="auth-password-confirmation"
+              name="password_confirmation"
+              type="password"
+              autocomplete="new-password"
+              required
+              minlength="12"
+            />
+            {% endif %} {% endif %}
+            <button class="button primary" type="submit" disabled>
+              {% if mode == 'signup' %}Create Account{% elif mode == 'recovery'
+              %}{{ 'Update Password' if request.args.get('step') == 'update'
+              else 'Send Reset Link' }}{% else %}Sign In{% endif %}
+            </button>
+          </form>
+          {% endif %} {% if mode == 'login' %}
+          <div class="auth-providers" hidden>
+            <div class="auth-divider"><span>or</span></div>
+            <button
+              class="button auth-provider-button"
+              type="button"
+              data-provider="google"
+              hidden
+            >
+              <img
+                src="/assets/auth-google.png"
+                width="20"
+                height="20"
+                alt=""
+                aria-hidden="true"
+              />
+              <span>Continue With Google</span></button
+            ><button
+              class="button auth-provider-button"
+              type="button"
+              data-provider="github"
+              hidden
+            >
+              <img
+                src="/assets/auth-github.svg"
+                width="20"
+                height="20"
+                alt=""
+                aria-hidden="true"
+              />
+              <span>Continue With GitHub</span>
+            </button>
+          </div>
+          {% endif %} {% if mode in ['login','signup'] %}
+          <p class="auth-links">
+            {% if mode == 'login' %}<a href="/signup">Create Account</a> {% else
+            %}<a href="/login">Back To Sign In</a>{% endif %}
+          </p>
+          {% endif %} {% if mode == 'pending' %}<button
+            class="button"
+            id="auth-sign-out"
+          >
+            Sign Out</button
+          >{% endif %} {% if mode not in ['login','signup','recovery'] %}
+          <button class="button" id="auth-retry">Reload to Retry</button>
+          {% endif %} {% if mode == 'recovery' %}
+          <p class="auth-links">
+            <a href="/login">Back To Sign In</a>{% if request.args.get('step')
+            == 'update' %} ·
+            <a href="/auth/recovery">Request a New Reset Link</a>{% endif %}
+          </p>
+          {% endif %} {% if mode == 'callback' %}<a href="/login"
+            >Return to Sign-In</a
+          >{% endif %} {% if mode == 'login' %}
+        </div>
+        {% endif %}
+      </section>
+    </main>
+    {% endif %}
+  </body>
+</html>

@@ -513,8 +513,6 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
 
 @callback(
     *[Output(f"executive-kpi-slot-{key}", "children") for key, _, _ in KPI_FIELDS],
-    Output("executive-primary", "figure"),
-    Output("executive-secondary", "figure"),
     Output("executive-detail", "rowData"),
     Output("executive-detail", "columnDefs"),
     Output("executive-detail", "dashGridOptions"),
@@ -522,8 +520,6 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
     Input("executive-filter-catalog", "data"),
     *[Input(f"executive-{name}", "value") for name in FILTERS],
     Input("display-preferences", "data"),
-    Input("executive-chart-type", "value"),
-    Input("executive-breakdown-type", "value"),
 )
 def update_report(
     catalog,
@@ -547,7 +543,63 @@ def update_report(
         chart_type,
         breakdown_type,
     )
-    return (*cards, *report_outputs)
+    # Charts have independent callbacks so menu changes do not reload KPIs/table.
+    return (*cards, *report_outputs[2:])
+
+
+def populate_chart(catalog, filters, chart_type, index):
+    if catalog is None:
+        return render_report({"monthly": [], "detail": []})[index]
+    try:
+        selected = normalize_filters(catalog, *filters)
+        values = load_executive_report(*warehouse_location(), *selected)
+        return render_report(
+            values,
+            chart_type=chart_type if index == 1 else "line",
+            breakdown_type=chart_type if index == 2 else "bar",
+        )[index]
+    except dash.exceptions.PreventUpdate:
+        raise
+    except Exception:
+        logging.getLogger(__name__).warning("Executive chart unavailable")
+        figure = style_figure(go.Figure())
+        figure.add_annotation(
+            text="Chart unavailable. Change a filter or reload to retry.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        return figure
+
+
+@callback(
+    Output("executive-primary", "figure"),
+    Input("executive-filter-catalog", "data"),
+    *[Input(f"executive-{name}", "value") for name in FILTERS],
+    Input("executive-chart-type", "value"),
+)
+def update_monthly_chart(
+    catalog, year, quarter, channel, category, subcategory, chart_type
+):
+    return populate_chart(
+        catalog, (year, quarter, channel, category, subcategory), chart_type, 1
+    )
+
+
+@callback(
+    Output("executive-secondary", "figure"),
+    Input("executive-filter-catalog", "data"),
+    *[Input(f"executive-{name}", "value") for name in FILTERS],
+    Input("executive-breakdown-type", "value"),
+)
+def update_breakdown_chart(
+    catalog, year, quarter, channel, category, subcategory, chart_type
+):
+    return populate_chart(
+        catalog, (year, quarter, channel, category, subcategory), chart_type, 2
+    )
 
 
 def populate_report(

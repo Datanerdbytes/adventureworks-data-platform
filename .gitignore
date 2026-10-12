@@ -34,3 +34,9 @@ dbt_modules/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Authentication frontend manifests and portable configuration.
+!/package.json
+!/package-lock.json
+node_modules/
+!.env.example

@@ -4,10 +4,17 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from flask import g
+from dash.exceptions import PreventUpdate
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app, serve_layout
-from pages.workspace import layout, filter_saved_views, search_definitions
+from pages.workspace import (
+    layout,
+    filter_saved_views,
+    search_definitions,
+    populate_workspace_summary,
+)
 
 
 def walk(node):
@@ -20,6 +27,26 @@ def walk(node):
 
 
 class WorkspaceTests(unittest.TestCase):
+    def test_summary_uses_configuration_and_verified_identity(self):
+        from auth_fixtures import WORKSPACE
+
+        with app.server.test_request_context():
+            with self.assertRaises(PreventUpdate):
+                populate_workspace_summary("/workspace")
+            g.workspace_username = "verified@example.test"
+            g.workspace = WORKSPACE
+            fields = populate_workspace_summary("/workspace")
+            values = {
+                field.children[0].children: field.children[1].children
+                for field in fields
+            }
+            self.assertEqual(values["Workspace"], "Test Workspace")
+            self.assertEqual(values["Responsible Team"], "Governance Team")
+            self.assertEqual(values["Signed In As"], "verified@example.test")
+            self.assertEqual(values["Your Role"], "Owner")
+            with self.assertRaises(PreventUpdate):
+                populate_workspace_summary("/dashboard")
+
     def test_mock_layout_and_navigation(self):
         with patch(
             "google.cloud.bigquery.Client",
@@ -42,7 +69,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(routes, {"/dashboard", "/monitoring", "/tables", "/settings"})
         shell = list(walk(serve_layout()))
         workspace_links = [n for n in shell if getattr(n, "href", None) == "/workspace"]
-        self.assertEqual(len(workspace_links), 2)
+        self.assertEqual(len(workspace_links), 1)
         self.assertIn(
             "nav-workspace", [getattr(n, "id", None) for n in workspace_links]
         )

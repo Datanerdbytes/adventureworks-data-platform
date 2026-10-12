@@ -1,48 +1,33 @@
-# AdventureWorks Analytics — local demo
+# AdventureWorks Analytics
 
-A four-page Dash console with a collapsible sidebar, responsive mobile drawer,
-Plotly charts, and searchable AG Grid tables. Charts and detail tables use deterministic synthetic examples. Executive KPI
-cards read the BigQuery revenue mart and sales fact. Refresh updates the display timestamp,
-not the fixture period. No ingestion or dbt jobs are executed. The five Executive KPIs make a read-only BigQuery query; other displays remain synthetic. The public landing
-page lives at `/`; the workspace is protected by temporary `dash-auth` HTTP
-Basic authentication. Deployment and Supabase integration remain deferred.
+A Dash/Flask analytics console with Supabase authentication and workspace
+membership governance. Reports use BigQuery; remaining illustrative sections are
+explicitly labeled. No ingestion or dbt jobs run from Workspace Overview.
 
-## Run
+## Run and authentication
 
-From the repository root, with Python 3.12+ and uv:
+Follow [Supabase setup and verification](../docs/supabase-auth.md) to configure a
+new project, apply migrations, and bootstrap the initial administrator. Copy the
+variable names from root `.env.example` into your private configuration. Then:
 
 ```sh
 uv sync
+npm ci --ignore-scripts
+npm run build:auth
 uv run python my-dash-app/app.py
 ```
 
-Open http://localhost:8050/ for the public landing page. Before signing in, set
-`DASH_AUTH_USERNAME` and `DASH_AUTH_PASSWORD` in the root `.env` or runtime
-environment, then restart the app. Runtime values take precedence. Choose your
-own credentials; there are no default accounts and no credentials are committed.
-
-“Sign in” and “Open workspace” open `/dashboard`, which redirects browser
-navigation to an in-page `/login` form. This works in embedded previews that do
-not support native Basic Auth prompts. Explicit HTTP Basic Auth requests remain
-supported. Missing configuration returns 503; invalid credentials
-return 401. Every dashboard page, asset, layout endpoint, and callback requires
-valid credentials. A caller-supplied public pathname cannot bypass protection.
-Only `/`, `/theme.css`, and `/assets/landing.css` are public GET/HEAD endpoints.
-
-Mutation requests require a matching Origin. If `AUTH_APP_ORIGIN` is set, it must
-match the exact address used in the browser; otherwise the current request origin
-is used. The server binds only to loopback. Use HTTPS before hosting Basic Auth
-outside localhost.
-
-Basic Auth is browser-managed: it has no reliable application logout, signup,
-password reset, or cross-tab session controls. To switch accounts, use a separate
-private browsing session. The account menu intentionally does not pretend to
-log the browser out. Username display comes from the authenticated request;
-passwords never enter a layout, Store, or session cookie.
+Open the configured origin. `/login` supports email/password and explicitly
+enabled Google/GitHub providers. Confirmed accounts need workspace approval.
+Missing service configuration fails closed; legacy Basic Auth is removed.
+The frontend sources are in `auth_frontend/`; rebuild after changes rather than
+editing only the tracked bundle. The app verifies identity and membership before
+Dash requests, cached data, and exports. All workspaces share analytics data.
 
 ## Pages and preferences
 
-- `/workspace`: Workspace Overview with explicitly labeled Phase 1 sample content.
+- `/workspace`: database Workspace Summary with explicitly labeled sample sections.
+- `/workspace/admin`: workspace provisioning and membership administration.
 - `/dashboard`: activity, metrics, recent runs, and workspace details.
 - `/monitoring`: pipeline and sample-window filters, duration chart, refresh, run grid.
 - `/tables`: Products, Customers, and Sales; global search and column sorting/filtering.
@@ -60,8 +45,12 @@ values; they contain no data or credentials.
 The header workspace link and sidebar entry open `/workspace` inside the existing
 authenticated app shell. Its six sections are Workspace Summary, Data Freshness,
 Saved Views, Data Quality, Metric Definitions, and Quick Links. This page does not
-query the warehouse or run pipelines. Refresh dates, ownership, quality notices,
+query the warehouse or run pipelines. Refresh dates, quality notices,
 and saved views are illustrative fixtures rather than current operational status.
+
+Workspace Summary reads the selected workspace's details, responsible team,
+owners, and current role from Supabase Postgres. Signed-in email comes from the
+verified authentication request. Other sections remain samples.
 
 Team filters narrow the sample saved views, and metric search filters the sample
 glossary. Expanding a saved view displays its example filters; saving and restoring
@@ -72,8 +61,9 @@ fixtures independently while preserving this layout and navigation.
 ## Structure and extension
 
 `app.py` creates the shared shell and routes. `auth.py` installs authentication
-before Dash request hooks and uses `dash-auth` with a strict request guard.
-`templates/landing.html` and `assets/landing.css` render the public landing page. `pages/` owns page layouts and
+before Dash request hooks and checks Supabase identity and database membership with a strict request guard.
+`templates/landing.html` and `assets/landing.css` render the public landing page.
+`templates/auth.html` hosts authentication screens outside the Dash shell. `pages/` owns page layouts and
 callbacks; `components.py` holds reusable UI. `data.py` generates small fixtures
 inside callbacks. `theme.py` supplies shared CSS tokens and Plotly styles. Assets
 contain modular CSS, local SVG icons, and drawer interaction code.

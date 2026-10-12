@@ -1,0 +1,70 @@
+"""Offline Supabase fixtures. Never used by application code."""
+
+from governance import GovernanceError
+
+WORKSPACE = {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "name": "Test Workspace",
+    "purpose": "Reporting",
+    "responsible_team": "Governance Team",
+    "role": "owner",
+    "owners": ["owner@example.test"],
+}
+CONFIG = dict(
+    SUPABASE_URL="https://project.supabase.co",
+    SUPABASE_PUBLIC_KEY="test-public-key",
+    AUTH_APP_ORIGIN="http://localhost",
+    AUTH_SECRET_CONFIGURED=True,
+    SESSION_COOKIE_SECURE=False,
+    AUTH_PROVIDERS=[],
+)
+
+
+class FakeGateway:
+    calls = []
+
+    def __init__(self, url, key, token):
+        self.token = token
+
+    def user(self):
+        if self.token in ("expired", "tampered"):
+            raise GovernanceError("Invalid session.", 401)
+        if self.token == "outage":
+            raise GovernanceError("Service unavailable.")
+        if self.token == "unconfirmed":
+            raise GovernanceError("Confirm email.", 403)
+        return {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "email": "owner@example.test",
+            "email_confirmed_at": "2026-10-12",
+        }
+
+    def rpc(self, name, **payload):
+        self.calls.append((name, payload))
+        if name == "registration_workspace":
+            return {"name": WORKSPACE["name"], "code": "a" * 48}
+        if name == "my_access_request_status":
+            return "pending"
+        if name == "workspace_context":
+            if self.token in ("no-member", "revoked"):
+                return {"workspaces": [], "platform_admin": False}
+            workspace = {
+                **WORKSPACE,
+                "role": "viewer" if self.token == "viewer" else "owner",
+            }
+            return {
+                "workspaces": [workspace],
+                "platform_admin": self.token == "platform",
+            }
+        if name == "workspace_admin_data":
+            return {
+                "members": [],
+                "approvals": [],
+                "events": [],
+                "member_count": 0,
+                "approval_count": 0,
+            }
+        return None
+
+    def has_revoked_membership(self, user_id):
+        return self.token == "revoked"

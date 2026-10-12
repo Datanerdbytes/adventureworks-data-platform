@@ -121,7 +121,8 @@ body.sidebar-collapsed .submenu-toggle {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
-.analytics-report .chart {
+.analytics-report .chart,
+.analytics-report .chart-loading {
   height: 340px;
 }
 .analytics-report h1 {
