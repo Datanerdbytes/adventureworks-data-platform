@@ -28,7 +28,11 @@ class GovernanceTests(unittest.TestCase):
             ),
         ):
             with (
-                patch.dict("os.environ", values, clear=True),
+                patch.dict(
+                    "os.environ",
+                    {**values, "RATE_LIMIT_ENVIRONMENT": "testing"},
+                    clear=True,
+                ),
                 patch("auth.load_dotenv"),
             ):
                 server = Flask("key-name-test")

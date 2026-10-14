@@ -1,113 +1,163 @@
-"""Flask-Limiter configuration with Redis backend for production, memory for local dev/tests."""
+"""Auth-only limits with shared production storage and verified user keys."""
 
+import math
 import os
-from functools import wraps
-from typing import Optional, Callable
+import time
+from ipaddress import ip_address, ip_network
+from urllib.parse import urlsplit
 
-from flask import Flask, request
+from flask import abort, jsonify, request
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
+from limits import parse_many
+from limits.errors import StorageError
+from redis.exceptions import RedisError
+
+# These quotas supplement the IP checks after Supabase verifies the account.
+USER_LIMITS = {
+    ("auth_session", "POST"): "60 per minute; 300 per hour",
+    ("auth_status", "GET"): "120 per minute; 600 per hour",
+    ("select_workspace", "POST"): "30 per minute; 100 per hour",
+}
 
 
-def _get_redis_url() -> Optional[str]:
-    """Get Redis URL from environment for production rate limiting."""
-    redis_url = os.environ.get("RATE_LIMIT_REDIS_URL")
-    if redis_url:
-        return redis_url
-    return None
+def _client_ip(trusted_proxies):
+    """Walk forwarding addresses from the trusted peer toward the client.
+
+    The proxy must append the actual sender to X-Forwarded-For. A client prefix
+    cannot override the first untrusted address encountered from the right.
+    """
+    try:
+        peer = ip_address(request.remote_addr)
+    except (TypeError, ValueError):
+        return "unknown-peer"
+    if not any(peer in network for network in trusted_proxies):
+        return str(peer)
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if not forwarded or len(forwarded) > 2048:
+        return str(peer)
+    try:
+        addresses = [ip_address(value.strip()) for value in forwarded.split(",")]
+    except ValueError:
+        return str(peer)
+    for address in reversed(addresses):
+        if not any(address in network for network in trusted_proxies):
+            return str(address)
+    return str(peer)
 
 
-def _get_client_ip() -> str:
-    """Get client IP address without trusting X-Forwarded-For blindly."""
-    # Only trust X-Forwarded-For if behind a known proxy (set by deployment)
+def init_limiter(app):
+    """Require Redis unless local development/testing is explicitly selected."""
+    mode = os.environ.get("RATE_LIMIT_ENVIRONMENT", "production")
+    if mode not in {"production", "development", "testing"}:
+        raise RuntimeError("Invalid RATE_LIMIT_ENVIRONMENT configuration")
     if os.environ.get("RATE_LIMIT_TRUST_PROXY") == "1":
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-    return get_remote_address()
+        raise RuntimeError(
+            "Use RATE_LIMIT_TRUSTED_PROXY_CIDRS instead of blanket proxy trust"
+        )
+    try:
+        trusted_proxies = tuple(
+            ip_network(value.strip(), strict=True)
+            for value in os.environ.get("RATE_LIMIT_TRUSTED_PROXY_CIDRS", "").split(",")
+            if value.strip()
+        )
+        if any(network.prefixlen == 0 for network in trusted_proxies):
+            raise ValueError("Cannot trust every address")
+    except ValueError:
+        raise RuntimeError("Invalid trusted proxy CIDR configuration") from None
+    storage_uri = os.environ.get("RATE_LIMIT_REDIS_URL")
+    if not storage_uri and mode == "production":
+        raise RuntimeError(
+            "Production auth rate limiting requires RATE_LIMIT_REDIS_URL"
+        )
+    storage_options = {}
+    if storage_uri:
+        if urlsplit(storage_uri).scheme not in {"redis", "rediss"}:
+            raise RuntimeError("RATE_LIMIT_REDIS_URL must use redis:// or rediss://")
+        storage_options = {"socket_connect_timeout": 2, "socket_timeout": 2}
+        import redis
 
-
-def _get_user_key() -> str:
-    """Get user identifier for authenticated rate limiting.
-    
-    Returns a user-scoped key only after server-verified identity.
-    For unauthenticated requests, falls back to IP.
-    """
-    # Check if we have a verified user in Flask g
-    if hasattr(request, "g") and hasattr(request.g, "auth_user"):
-        user = request.g.auth_user
-        if isinstance(user, dict) and user.get("id"):
-            return f"user:{user['id']}"
-    # Fall back to IP for unauthenticated requests
-    return f"ip:{_get_client_ip()}"
-
-
-def init_limiter(app: Flask) -> Limiter:
-    """Initialize Flask-Limiter with appropriate storage backend.
-    
-    Production: Redis (requires RATE_LIMIT_REDIS_URL env var)
-    Local dev/tests: In-memory storage
-    
-    Raises:
-        RuntimeError: If Redis is configured but unavailable
-    """
-    redis_url = _get_redis_url()
-    
-    if redis_url:
-        # Production: Use Redis backend
         try:
-            import redis
-            redis_client = redis.from_url(redis_url, decode_responses=True)
-            # Test connection
-            redis_client.ping()
-            storage_uri = redis_url
-        except Exception as e:
-            raise RuntimeError(f"Redis backend configured but unavailable: {e}")
-    else:
-        # Local dev/tests: Use in-memory storage
-        storage_uri = "memory://"
-    
+            with redis.Redis.from_url(storage_uri, **storage_options) as client:
+                client.ping()
+        except Exception:
+            # Never include an exception containing a credential-bearing URL.
+            raise RuntimeError("Auth rate-limit storage is unavailable") from None
     limiter = Limiter(
         app=app,
-        key_func=_get_client_ip,
-        storage_uri=storage_uri,
-        default_limits=["200 per day", "50 per hour"],
-        headers_enabled=True,
+        key_func=lambda: _client_ip(trusted_proxies),
+        storage_uri=storage_uri or "memory://",
+        storage_options=storage_options,
+        default_limits=[],
+        headers_enabled=False,
+        swallow_errors=False,
+        in_memory_fallback_enabled=False,
+        key_prefix="adventureworks-auth",
     )
-    
-    # Add user-scoped key function for authenticated endpoints
-    limiter._user_key_func = _get_user_key
-    
-    # Store in Flask extensions for retrieval
-    app.extensions["limiter"] = limiter
-    
+    app.extensions["auth_limiter"] = limiter
+
+    @app.errorhandler(RateLimitExceeded)
+    def throttled(error):
+        response = jsonify(error="Too many requests. Please wait before trying again.")
+        response.status_code = 429
+        return response
+
+    def unavailable(error):
+        response = jsonify(
+            error="Authentication is temporarily unavailable. Please try again later."
+        )
+        response.status_code = 503
+        response.headers["Retry-After"] = "30"
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @app.after_request
+    def rate_headers(response):
+        if response.status_code == 503:
+            return response
+        current = limiter.current_limit
+        if current is None:
+            return response
+        try:
+            reset = current.reset_at
+            response.headers["X-RateLimit-Limit"] = str(current.limit.amount)
+            response.headers["X-RateLimit-Remaining"] = str(current.remaining)
+            response.headers["X-RateLimit-Reset"] = str(reset)
+            if response.status_code == 429 and "Retry-After" not in response.headers:
+                response.headers["Retry-After"] = str(
+                    max(1, math.ceil(reset - time.time()))
+                )
+        except (RedisError, StorageError):
+            response = unavailable(None)
+        return response
+
+    app.register_error_handler(RedisError, unavailable)
+    app.register_error_handler(StorageError, unavailable)
     return limiter
 
 
-def get_limiter() -> Optional[Limiter]:
-    """Get the limiter instance from Flask extensions."""
-    from flask import current_app
-    return current_app.extensions.get("limiter")
-
-
-def limit_ip(limits: list, methods: Optional[list] = None):
-    """Decorator to apply IP-based rate limit to specific endpoint."""
-    def decorator(f: Callable) -> Callable:
-        limiter = get_limiter()
-        if limiter:
-            return limiter.limit(limits, methods=methods, key_func=_get_client_ip)(f)
-        return f
-    return decorator
-
-
-def limit_user(limits: list, methods: Optional[list] = None):
-    """Decorator to apply user-based rate limit to specific endpoint.
-    
-    Falls back to IP for unauthenticated requests.
-    """
-    def decorator(f: Callable) -> Callable:
-        limiter = get_limiter()
-        if limiter:
-            return limiter.limit(limits, methods=methods, key_func=_get_user_key)(f)
-        return f
-    return decorator
+def enforce_user_limit(limiter, user):
+    """Count only a server-verified identity, before membership/RPC work."""
+    method = "GET" if request.method == "HEAD" else request.method
+    policy = USER_LIMITS.get((request.endpoint, method))
+    if policy is None:
+        return
+    user_id = user.get("id")
+    if not isinstance(user_id, str) or not user_id:
+        response = jsonify(error="Authentication is temporarily unavailable.")
+        response.status_code = 503
+        abort(response)
+    for limit in parse_many(policy):
+        identifiers = ("adventureworks-auth-user", request.endpoint, method, user_id)
+        if not limiter.limiter.hit(limit, *identifiers):
+            reset, _ = limiter.limiter.get_window_stats(limit, *identifiers)
+            response = jsonify(
+                error="Too many requests. Please wait before trying again."
+            )
+            response.status_code = 429
+            response.headers["Retry-After"] = str(
+                max(1, math.ceil(reset - time.time()))
+            )
+            abort(response)

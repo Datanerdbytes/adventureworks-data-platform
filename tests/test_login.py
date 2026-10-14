@@ -12,6 +12,7 @@ from auth_fixtures import CONFIG, FakeGateway, WORKSPACE
 
 class LoginTests(unittest.TestCase):
     def setUp(self):
+        app.server.extensions["auth_limiter"].reset()
         self.client = app.server.test_client()
         FakeGateway.calls = []
         for mapping, values in (
