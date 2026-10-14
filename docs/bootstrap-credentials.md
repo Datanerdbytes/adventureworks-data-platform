@@ -19,7 +19,9 @@ Never run bootstrap through the web service or to test a rotated password.
 
 ## TLS and server identity
 
-The CLI supplies `sslmode=verify-full` and `gssencmode=disable` as connection
+Supply an explicit TCP hostname in the URL (or `PGHOST`); missing hosts and
+Unix-socket paths are rejected before connecting, because libpq ignores SSL
+options on Unix sockets. The CLI supplies `sslmode=verify-full` and `gssencmode=disable` as connection
 keyword arguments. They override weaker URL settings and environment defaults,
 so libpq must verify the server certificate chain and hostname before database
 password authentication. It then checks `connection.info.ssl_in_use` before any

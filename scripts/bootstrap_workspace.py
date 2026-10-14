@@ -13,6 +13,13 @@ class BootstrapValidationError(ValueError):
 
 def connect_secure_database(url):
     """Require authenticated TLS before credentials or bootstrap SQL are sent."""
+    host = psycopg2.extensions.parse_dsn(url).get("host", os.environ.get("PGHOST", ""))
+    if not host or any(
+        not part or "/" in part or part.startswith("@") for part in host.split(",")
+    ):
+        raise BootstrapValidationError(
+            "Database connection requires an explicit TCP host."
+        )
     options = {"connect_timeout": 8, "sslmode": "verify-full", "gssencmode": "disable"}
     root_certificate = os.environ.get("SUPABASE_DB_SSLROOTCERT")
     if root_certificate:

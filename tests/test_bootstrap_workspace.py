@@ -38,7 +38,10 @@ class BootstrapConnectionTests(unittest.TestCase):
 
         with (
             patch.object(bootstrap_cli, "load_dotenv") as dotenv,
-            patch.dict(bootstrap_cli.os.environ, {"SUPABASE_DB_URL": "test-only"}),
+            patch.dict(
+                bootstrap_cli.os.environ,
+                {"SUPABASE_DB_URL": "postgresql://db.invalid/app"},
+            ),
             patch.object(bootstrap_cli.psycopg2, "connect", return_value=connection),
             patch.object(bootstrap_cli, "bootstrap", side_effect=run_bootstrap),
             patch(
@@ -82,6 +85,22 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
             sslrootcert="/trusted/ca.crt",
         )
 
+    def test_unix_or_missing_host_rejected_before_connect(self):
+        for url in (
+            "dbname=app",
+            "host=/tmp dbname=app",
+            "host=@abstract dbname=app",
+            "host=db.invalid,/tmp dbname=app",
+        ):
+            with (
+                self.subTest(url=url),
+                patch.dict(bootstrap_cli.os.environ, {}, clear=True),
+                patch.object(bootstrap_cli.psycopg2, "connect") as connect,
+            ):
+                with self.assertRaises(bootstrap_cli.BootstrapValidationError):
+                    bootstrap_cli.connect_secure_database(url)
+                connect.assert_not_called()
+
     def test_default_trust_configuration_is_left_to_libpq(self):
         connection = SimpleNamespace(info=SimpleNamespace(ssl_in_use=True))
         with (
@@ -90,7 +109,7 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
                 bootstrap_cli.psycopg2, "connect", return_value=connection
             ) as connect,
         ):
-            bootstrap_cli.connect_secure_database("test-only")
+            bootstrap_cli.connect_secure_database("postgresql://db.invalid/app")
         self.assertNotIn("sslrootcert", connect.call_args.kwargs)
         self.assertEqual(connect.call_args.kwargs["sslmode"], "verify-full")
 
@@ -100,7 +119,10 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
         connection = Mock(info=SimpleNamespace(ssl_in_use=False))
         with (
             patch.object(bootstrap_cli, "load_dotenv"),
-            patch.dict(bootstrap_cli.os.environ, {"SUPABASE_DB_URL": "test-only"}),
+            patch.dict(
+                bootstrap_cli.os.environ,
+                {"SUPABASE_DB_URL": "postgresql://db.invalid/app"},
+            ),
             patch.object(bootstrap_cli.psycopg2, "connect", return_value=connection),
             patch.object(bootstrap_cli, "bootstrap") as bootstrap,
             patch(
@@ -125,7 +147,10 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
             with (
                 self.subTest(error=type(error).__name__),
                 patch.object(bootstrap_cli, "load_dotenv"),
-                patch.dict(bootstrap_cli.os.environ, {"SUPABASE_DB_URL": "test-only"}),
+                patch.dict(
+                    bootstrap_cli.os.environ,
+                    {"SUPABASE_DB_URL": "postgresql://db.invalid/app"},
+                ),
                 patch.object(bootstrap_cli.psycopg2, "connect", side_effect=error),
                 patch.object(bootstrap_cli, "bootstrap") as bootstrap,
                 patch(
@@ -147,7 +172,10 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
         connection = Mock(info=SimpleNamespace(ssl_in_use=True))
         with (
             patch.object(bootstrap_cli, "load_dotenv"),
-            patch.dict(bootstrap_cli.os.environ, {"SUPABASE_DB_URL": "test-only"}),
+            patch.dict(
+                bootstrap_cli.os.environ,
+                {"SUPABASE_DB_URL": "postgresql://db.invalid/app"},
+            ),
             patch.object(bootstrap_cli.psycopg2, "connect", return_value=connection),
             patch.object(
                 bootstrap_cli,
