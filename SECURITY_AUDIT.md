@@ -1,12 +1,56 @@
 # Security Audit Report: Postgres-AdventureWorksDW
 
+**Date:** 2026-10-14
+**Auditor:** Kilo Security Assessment
+**Classification:** Internal - Confidential
+
+---
+
 ## Executive Summary
 
 A security audit was conducted of the Postgres-AdventureWorksDW data analytics dashboard project. The assessment covered authentication/authorization architecture, database governance, credential management, API surface exposure, container hardening, and data pipeline safety.
 
 **Overall Rating: LOW-MEDIUM RISK**
 
-The project demonstrates strong foundational security practices including Supabase row-level security (RLS), security-definer RPC boundaries, email-first registration enforcement, password lockout mechanisms, and comprehensive audit logging. However, several areas require attention: SQL injection exposure in KPI query builders, overly permissive `.gitignore` patterns, missing rate-limiting on public endpoints, and insufficient dependency pinning.
+The project demonstrates strong foundational security practices including Supabase row-level security (RLS), security-definer RPC boundaries, email-first registration enforcement, password lockout mechanisms, and comprehensive audit logging. Phase 1/2 repository remediation is recorded below. Phase 3 verifies cache coverage, adds CSRF protection, and hardens bootstrap credential handling; production credential rotation remains an operator action.
+
+---
+
+## Phase 1 Implementation Status (2026-10-14)
+
+### VULN-01: SQL Injection in Customer KPI Query Builder — **ADDRESSED**
+
+**Implementation:** Added `validate_warehouse_identifiers()` function in `my-dash-app/customer_kpis.py` (lines 13-29) that validates BigQuery project and dataset identifiers against strict regex patterns before SQL construction. All SQL-building functions in `customer_kpis.py` now call this validator at entry.
+
+**Validation Evidence:**
+
+- Project ID pattern: `^[a-z][a-z0-9-]*$` (lowercase, alphanumeric, hyphens)
+- Dataset ID pattern: `^[A-Za-z_][A-Za-z0-9_]*$` (alphanumeric, underscores)
+- Unit tests in `tests/test_customer_kpis.py` (`ValidateWarehouseIdentifiersTests`) verify:
+  - Valid identifiers pass (including production values `quantum-echo-data-eng-prod` / `gold_adventureworks`)
+  - Invalid identifiers raise `ValueError` (uppercase, leading digits, special chars, empty, spaces)
+  - Common SQL injection patterns blocked (semicolon, backtick, comment, UNION)
+
+**Correction to Original Finding:** The audit's evidence showed a hypothetical pattern interpolating _filter values_ (segment, country) directly into SQL. Code review confirms the actual implementation **already used BigQuery parameterized queries** (`bigquery.ScalarQueryParameter`) for all filter values (year, quarter, channel, category, subcategory). The remaining risk was interpolation of _project/dataset identifiers_ into backtick-quoted table references, which cannot be parameterized. This has been mitigated by the identifier validation.
+
+**Status:** ✅ Complete — identifier validation + existing parameterization = defense in depth.
+
+### VULN-02: Overly Broad `.gitignore` Pattern — **ADDRESSED**
+
+**Implementation:** Removed blanket `*.json` exclusion from `.gitignore` (previously line 5). Retained explicit ignore for `gcp-key.json` only. Added allowlist exceptions for required JSON assets:
+
+- `package.json`, `package-lock.json` (root)
+- `.env.example` (template)
+- `my-dash-app/map_data/customer_boundaries.json` (geographic asset)
+- `my-dash-app/assets/geo/world_110m.json` (geographic asset)
+
+**Validation Evidence:**
+
+- `git check-ignore` confirms secrets (`gcp-key.json`, `.env`) and generated artifacts (`logs/`, `target/`, `dbt_packages/`, `node_modules/`) remain ignored.
+- `git check-ignore` confirms ordinary JSON configuration (`package.json`, `package-lock.json`, `.env.example`) and required map assets are **not** ignored.
+- New JSON files created in repository root or subdirectories are now tracked by default (no silent exclusion).
+
+**Status:** ✅ Complete
 
 ---
 
@@ -100,7 +144,7 @@ WHERE segment = '{user_segment}'
 **Location:** `my-dash-app/revenue_kpis.py`
 **CWE:** CWE-732
 
-**Description:** The cache directory is created with `0o700` permissions, which is appropriate. However, the cache key generation does not include all relevant query parameters, potentially returning stale data when filter parameters change. This is a data integrity concern rather than a security vulnerability.
+**Original allegation:** The cache directory permissions were appropriate, but the audit alleged omitted query parameters in cache identity. Phase 3 review did not reproduce an omission: all 21 memoized KPI loaders receive warehouse identifiers and relevant query inputs explicitly. Real-cache regression tests now protect that existing behavior. See [cache coverage](docs/cache-coverage.md) in the docs copy of this report.
 
 **Impact:** Users may see stale KPI data when filters change, leading to incorrect business decisions.
 
@@ -114,7 +158,7 @@ WHERE segment = '{user_segment}'
 **Location:** `my-dash-app/governance.py`, `my-dash-app/pages/workspace_admin.py`
 **CWE:** CWE-352
 
-**Description:** While the application uses Supabase Auth with access tokens in cookies, the governance RPC calls (workspace creation, member changes, approval decisions) rely on Bearer token validation without CSRF token validation. If cookies are `SameSite=Lax` (as documented), the risk is mitigated, but explicit CSRF tokens would provide defense-in-depth.
+**Original finding:** Cookie-authenticated browser requests could trigger governance mutations without a separate CSRF token. Exact Origin checks and SameSite=Lax cookies already mitigated cross-site requests. Phase 3 adds explicit CSRF validation before mutation execution while preserving identity and workspace authorization checks; see the Phase 3 implementation evidence below.
 
 **Impact:** In the event of cookie misconfiguration, an attacker could forge state-changing requests on behalf of authenticated users.
 
@@ -130,7 +174,7 @@ WHERE segment = '{user_segment}'
 
 **Description:** The bootstrap script accepts `SUPABASE_DB_URL` from environment variables and uses it to connect directly to PostgreSQL. While the script is documented as "never imported or exposed by the web application," it still represents a credential handling point. The URL is loaded from `.env` with `override=False`, which is appropriate.
 
-**Impact:** If the `.env` file is compromised, the database connection URL is exposed. The script also bypasses all RLS policies by connecting directly.
+**Impact:** Exposure of the privileged connection secret could permit database access. A direct connection does not itself bypass RLS; actual role attributes, ownership, grants, and policies determine access. Bootstrap needs explicitly authorized privileges, not an assumed arbitrary superuser role.
 
 **Remediation:** This is acceptable for a CLI-only bootstrap tool. Ensure the `SUPABASE_DB_URL` uses a least-privilege database role. Never run this script in web context. The existing advisory lock and idempotency checks are good controls.
 
@@ -148,7 +192,7 @@ WHERE segment = '{user_segment}'
 
 5. **Audit Trail:** All governance actions are logged to `governance_audit_events` with actor, action, and details.
 
-6. **Token Hygiene:** Recovery tokens stay in URL fragments (not logged by HTTP servers). Access/refresh tokens never enter Flask or Dash.
+6. **Token Hygiene:** Refresh tokens remain managed by Supabase JS. Access tokens reach Flask for verification and the HttpOnly application cookie, and never enter `dcc.Store` or logs. CSRF tokens are separate security values.
 
 7. **Cookie Security:** Cookies are HttpOnly and SameSite=Lax as documented.
 
@@ -160,28 +204,28 @@ WHERE segment = '{user_segment}'
 
 ## Prioritized Remediation Plan
 
-### Phase 1: Critical (0-2 weeks)
+### Phase 1: Critical (0-2 weeks) — **COMPLETE**
 
-| ID      | Action                                                                   | Effort |
-| ------- | ------------------------------------------------------------------------ | ------ |
-| VULN-01 | Parameterize all SQL queries in `customer_kpis.py` and `revenue_kpis.py` | 3 days |
-| VULN-02 | Replace `*.json` gitignore with explicit file rules                      | 1 hour |
+| ID      | Action                                                                   | Effort | Status                                                                     |
+| ------- | ------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------- |
+| VULN-01 | Parameterize all SQL queries in `customer_kpis.py` and `revenue_kpis.py` | 3 days | ✅ Done — identifier validation added; filter values already parameterized |
+| VULN-02 | Replace `*.json` gitignore with explicit file rules                      | 1 hour | ✅ Done                                                                    |
 
-### Phase 2: High (2-4 weeks)
+### Phase 2: High (2-4 weeks) — **CODE COMPLETE; operational setup remains**
 
-| ID      | Action                                                             | Status        | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------- | ------------------------------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| VULN-03 | Implement Flask-Limiter on all auth endpoints                      | **COMPLETED** | `my-dash-app/rate_limiter.py`: Flask-Limiter with Redis backend (required in production), per-IP and per-user limits for `auth_session`, `auth_status`, `select_workspace`. 429 responses with `Retry-After`; 503 fallback when storage unavailable. Installed in `auth.py:install_auth()` before Dash construction.                                                                                                                                                           |
-| VULN-04 | Pin exact dependency versions; add `pip-audit` to CI               | **COMPLETED** | All 16 production dependencies pinned with `==` in `pyproject.toml` (e.g., `dash==3.4.0`, `flask-limiter[redis]==3.12`). `uv.lock` provides reproducible transitive resolution. `pip-audit` integrated in dev dependency group and CI workflow. Updated `black` from 25.9.0 to 26.3.1 to resolve all known vulnerabilities (PYSEC-2026-2120, PYSEC-2026-2121).                                                                                                                 |
-| VULN-05 | Add environment guards and confirmation flags to `elt_pipeline.py` | **COMPLETED** | `elt_pipeline.py`: `_validate_options()` enforces boolean `confirm_production`; `is_production_destination()` recognizes `quantum-echo-data-eng-prod` regardless of ENVIRONMENT label; `validate_production_confirmation()` rejects production writes without `--confirm-production`. Dry-run mode (`--dry-run`) available. All 162 unit tests pass including `test_direct_call_without_confirmation_fails_for_production` and `test_cli_exits_nonzero_on_confirmation_error`. |
+| ID      | Action                                                             | Effort |
+| ------- | ------------------------------------------------------------------ | ------ |
+| VULN-03 | Implement Flask-Limiter on all auth endpoints                      | 2 days |
+| VULN-04 | Pin exact dependency versions; add `pip-audit` to CI               | 2 days |
+| VULN-05 | Add environment guards and confirmation flags to `elt_pipeline.py` | 3 days |
 
 ### Phase 3: Medium (4-8 weeks)
 
-| ID      | Action                                                  | Effort |
-| ------- | ------------------------------------------------------- | ------ |
-| VULN-06 | Fix cache key parameter coverage in KPI modules         | 1 day  |
-| VULN-07 | Add CSRF token validation for state-changing RPCs       | 2 days |
-| VULN-08 | Document `SUPABASE_DB_URL` handling; rotate credentials | 1 hour |
+| ID      | Action                                                        | Status                                                           |
+| ------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| VULN-06 | Verify cache parameter coverage                               | Existing coverage verified; regression tests added               |
+| VULN-07 | Add CSRF validation for browser-triggered mutations           | Implemented; independently reviewed and verified offline         |
+| VULN-08 | Document and harden bootstrap credentials; rotate credentials | Code/documentation verified offline; production rotation pending |
 
 ### Phase 4: Ongoing
 
@@ -201,7 +245,7 @@ All three high-priority vulnerabilities (VULN-03, VULN-04, VULN-05) have been re
 - **`uv lock --check`**: Lock file is consistent with `pyproject.toml`
 - **`uv run pip-audit`**: No known vulnerabilities found (after updating `black` 25.9.0 → 26.3.1)
 - **Python unit tests**: 162 tests pass (`RATE_LIMIT_ENVIRONMENT=testing`)
-- **`npm run test:auth`**: Pending
+- **`npm run test:auth`**: 18 tests passed in the Phase 2 integration review
 
 ### Changes Made
 
@@ -215,10 +259,49 @@ All three high-priority vulnerabilities (VULN-03, VULN-04, VULN-05) have been re
 
 - Configure `RATE_LIMIT_REDIS_URL` in production environment
 - Add `pip-audit` to CI/CD pipeline for automated scanning
-- Consider adding CSRF tokens as defense-in-depth for state-changing RPCs (VULN-07, Phase 3)
+- Phase 3 CSRF implementation and operational limits are recorded below
 
 ---
 
+## Phase 3 Repository Implementation Evidence (2026-10-14)
+
+VULN-06 is closed as **verified existing parameter coverage**, not a claimed
+cache-key code fix. All 21 existing memoized loaders include warehouse and query
+inputs. Tests use real isolated FileSystemCache lookup/storage with mocked
+BigQuery, vary each input, and verify reuse, canonical calls, function namespaces,
+and the executive lock wrapper. Shared caching is appropriate because authorized
+workspaces share the analytics dataset; authorization is checked separately.
+See [cache coverage](docs/cache-coverage.md).
+
+VULN-07 is **implemented and verified offline**. A dedicated, private token
+issuer creates a signed HttpOnly security nonce cookie. Header tokens are HMACs
+bound to that nonce and the current access cookie. Exact Origin checks and CSRF
+validation precede browser-triggered mutations, including pre-login session
+POST/DELETE, workspace switching, and Dash governance callbacks. The frontend
+acquires fresh tokens only for allowlisted same-origin app requests, never
+forwards them to Supabase, preserves concurrent callbacks, and never replays
+rejected writes. Flask session remains workspace-only. See
+[CSRF lifecycle and operational limits](docs/csrf-protection.md).
+
+VULN-08's repository work is **implemented and verified offline**. Bootstrap
+requires an explicit TCP host, pins it against libpq service overrides, enforces
+certificate/hostname verification before password authentication, checks actual
+negotiated TLS before SQL, and sanitizes driver/DSN errors. The runbook uses
+filename-only discovery and protected runtime secret injection; it distinguishes
+hosted Supabase privileges from true superuser/RLS capabilities. See
+[bootstrap credentials and rotation](docs/bootstrap-credentials.md).
+
+**Production credential rotation remains pending** separate authorization and
+operator evidence. No production connections, real accounts, bootstrap, ELT,
+dbt, password rotation, or role grants were performed. Code-level tests do not
+establish live deployment behavior or completion of operational rotation.
+
+The combined Python 3.12 candidate passes all 196 offline Python tests.
+Frontend build, tests, full repository hooks and dependency audit are recorded in
+[the Phase 3 implementation/review record](docs/security-phase3.md).
+
 ## Conclusion
 
-The Postgres-AdventureWorksDW project has a strong security foundation with proper database-level access controls, comprehensive audit logging, and thoughtful authentication architecture. The identified vulnerabilities are primarily related to input handling in query builders, operational safeguards for destructive pipelines, and defense-in-depth improvements. Addressing the critical and high-priority items will bring the project to a production-ready security posture.
+The Postgres-AdventureWorksDW project has a strong security foundation with proper database-level access controls, comprehensive audit logging, and thoughtful authentication architecture. **Phase 1 critical vulnerabilities have been addressed** with identifier validation for SQL construction and a corrected `.gitignore` pattern. Phase 2 code remediation and Phase 3 offline evidence are recorded above. Operational Redis configuration, deployment verification, and production credential rotation require their own evidence; repository checks do not establish production readiness.
+
+**Note:** This report reflects code-level verification only. No live production BigQuery queries were executed, no ELT/dbt destructive operations were run, and no real accounts were created during validation. Phase 1 completion is based on static analysis, unit test results (108 tests passing), and git ignore behavior checks.
