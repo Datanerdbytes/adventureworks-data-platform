@@ -91,7 +91,7 @@ to avoid exposing which emails are registered; the page links to signup.
 
 Set
 `SUPABASE_DB_URL` privately to the project's privileged Postgres connection URL
-(with appropriate SSL settings), then run:
+(with an approved trusted CA for certificate and hostname verification), then run:
 
 ```sh
 uv run python scripts/bootstrap_workspace.py --email your-confirmed-email
@@ -104,6 +104,10 @@ Team; its purpose is Sales Performance, Customer Intelligence & Pipeline
 Monitoring. The database URL is a CLI-only secret and must not enter the app's
 browser configuration or container runtime unless explicitly needed for an
 independent administration job. Never expose bootstrap as a web endpoint.
+
+See [bootstrap credential handling](bootstrap-credentials.md) for enforced
+verified TLS, trust configuration, privileges, and the operator rotation runbook.
+Production credential rotation remains pending separate authorization and evidence.
 
 ## 3. Provisioning and permissions
 

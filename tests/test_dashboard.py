@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
+from auth_fixtures import csrf_headers
 from app import app
 from data import grid_options, runs, table_rows
 from pages import dashboard, monitoring, tables
@@ -102,7 +103,7 @@ class DashboardTests(unittest.TestCase):
             "changedPropIds": ["tables-selector.value"],
         }
         response = self.client.post(
-            "/_dash-update-component", json=body, headers={"Origin": "http://localhost"}
+            "/_dash-update-component", json=body, headers=csrf_headers(self.client)
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json["response"]["tables-grid"]["rowData"]), 48)

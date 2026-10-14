@@ -7,20 +7,54 @@ import psycopg2
 from dotenv import load_dotenv
 
 
+class BootstrapValidationError(ValueError):
+    """Fixed, operator-facing validation messages without connection details."""
+
+
+def connect_secure_database(url):
+    """Require authenticated TLS before credentials or bootstrap SQL are sent."""
+    host = psycopg2.extensions.parse_dsn(url).get("host", os.environ.get("PGHOST", ""))
+    if not host or any(
+        not part or "/" in part or part.startswith("@") for part in host.split(",")
+    ):
+        raise BootstrapValidationError(
+            "Database connection requires an explicit TCP host."
+        )
+    options = {
+        "host": host,
+        "connect_timeout": 8,
+        "sslmode": "verify-full",
+        "gssencmode": "disable",
+    }
+    root_certificate = os.environ.get("SUPABASE_DB_SSLROOTCERT")
+    if root_certificate:
+        options["sslrootcert"] = root_certificate
+    connection = psycopg2.connect(url, **options)
+    try:
+        if not connection.info.ssl_in_use:
+            raise BootstrapValidationError("Database connection requires TLS.")
+    except Exception:
+        connection.close()
+        raise
+    return connection
+
+
 def bootstrap(connection, email):
     with connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_xact_lock(74112026)")
             cursor.execute("SELECT count(*) FROM public.platform_administrators")
             if cursor.fetchone()[0]:
-                raise ValueError("Platform administration is already bootstrapped.")
+                raise BootstrapValidationError(
+                    "Platform administration is already bootstrapped."
+                )
             cursor.execute(
                 "SELECT id FROM auth.users WHERE lower(email)=lower(%s) AND email_confirmed_at IS NOT NULL",
                 (email.strip(),),
             )
             row = cursor.fetchone()
             if not row:
-                raise ValueError(
+                raise BootstrapValidationError(
                     "Sign up and confirm the initial administrator email first."
                 )
             actor = row[0]
@@ -61,7 +95,7 @@ def main():
     if not url:
         parser.error("Set SUPABASE_DB_URL privately before running bootstrap.")
     try:
-        connection = psycopg2.connect(url, connect_timeout=8)
+        connection = connect_secure_database(url)
         try:
             workspace = bootstrap(connection, args.email)
         finally:
@@ -73,7 +107,7 @@ def main():
             1,
             (
                 str(error) + "\n"
-                if isinstance(error, ValueError)
+                if isinstance(error, BootstrapValidationError)
                 else "Database bootstrap failed. Check connectivity and migrations.\n"
             ),
         )
