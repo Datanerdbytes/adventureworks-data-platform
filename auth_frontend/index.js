@@ -1,3 +1,4 @@
+import { csrfFetch, monitorDashFetch } from "./csrf.js";
 import { createClient } from "@supabase/supabase-js";
 import { jsonRequest, sessionController } from "./session.js";
 import {
@@ -11,6 +12,9 @@ import {
   loginNotice,
   exchangeCallbackCode,
 } from "./registration.js";
+
+// Install before cookie synchronization and before Dash's renderer starts.
+window.fetch = csrfFetch(window.fetch.bind(window), location.href);
 
 let startRenderer;
 let ready = false;
@@ -282,29 +286,16 @@ async function initialize() {
     if (!result) return location.replace("/login");
     if (!result.approved) return location.replace("/auth/access-pending");
     await jsonRequest("/auth/status");
+    // HTTP failures stop the display but never replay data mutations.
+    window.fetch = monitorDashFetch(
+      window.fetch.bind(window),
+      location.href,
+      failure,
+    );
     ready = true;
     document.body.classList.remove("auth-blocked");
     document.getElementById("auth-startup")?.setAttribute("hidden", "");
     startRenderer?.();
-    // HTTP failures stop the display but never replay data mutations.
-    const fetchOriginal = window.fetch.bind(window);
-    window.fetch = async (...args) => {
-      const response = await fetchOriginal(...args);
-      const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
-      if (
-        url &&
-        new URL(url, location.origin).origin === location.origin &&
-        new URL(url, location.origin).pathname.startsWith("/_dash") &&
-        [401, 403, 503].includes(response.status)
-      ) {
-        failure(
-          new Error(
-            "Your access changed or the service is unavailable. Reload to sign in and retry.",
-          ),
-        );
-      }
-      return response;
-    };
   } else if (mode === "login") status(loginNotice(params));
 }
 

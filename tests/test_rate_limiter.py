@@ -11,7 +11,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from auth import install_auth
-from auth_fixtures import CONFIG, FakeGateway
+from auth_fixtures import csrf_headers, CONFIG, FakeGateway
 from rate_limiter import USER_LIMITS
 
 
@@ -54,7 +54,6 @@ class RateLimitTests(unittest.TestCase):
         self.limiter = self.app.extensions["auth_limiter"]
         CountingGateway.validations = 0
         FakeGateway.calls = []
-        self.origin = {"Origin": "http://localhost"}
 
     def test_startup_and_all_auth_routes(self):
         for path in (
@@ -75,14 +74,16 @@ class RateLimitTests(unittest.TestCase):
                 self.client.post(
                     "/auth/session",
                     json={"access_token": "approved"},
-                    headers=self.origin,
+                    headers=csrf_headers(self.client),
                 ).status_code,
                 200,
             )
         validations = CountingGateway.validations
         calls = len(FakeGateway.calls)
         response = self.client.post(
-            "/auth/session", json={"access_token": "approved"}, headers=self.origin
+            "/auth/session",
+            json={"access_token": "approved"},
+            headers=csrf_headers(self.client),
         )
         self.assertEqual(response.status_code, 429)
         self.assertTrue(response.is_json)
@@ -95,12 +96,16 @@ class RateLimitTests(unittest.TestCase):
 
     def test_endpoint_and_method_isolation_and_logout(self):
         for _ in range(31):
-            self.client.post("/auth/session", json={}, headers=self.origin)
+            self.client.post(
+                "/auth/session", json={}, headers=csrf_headers(self.client)
+            )
         self.assertEqual(self.client.get("/auth/config").status_code, 200)
         self.client.set_cookie("aw_access", "expired")
-        response = self.client.delete("/auth/session", headers=self.origin)
+        response = self.client.delete(
+            "/auth/session", headers=csrf_headers(self.client)
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("aw_access=;", response.headers["Set-Cookie"])
+        self.assertIn("aw_access=;", ";".join(response.headers.getlist("Set-Cookie")))
         self.assertEqual(CountingGateway.validations, 0)
 
     def test_untrusted_forwarding_does_not_bypass_ip_limit(self):
@@ -189,7 +194,7 @@ class RateLimitTests(unittest.TestCase):
         for _ in range(65):
             self.assertEqual(
                 self.client.post(
-                    "/_dash-update-component", headers=self.origin
+                    "/_dash-update-component", headers=csrf_headers(self.client)
                 ).status_code,
                 200,
             )
@@ -200,15 +205,19 @@ class RateLimitTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         for token, status in (("tampered", 401), ("unconfirmed", 403), ("outage", 503)):
             response = self.client.post(
-                "/auth/session", json={"access_token": token}, headers=self.origin
+                "/auth/session",
+                json={"access_token": token},
+                headers=csrf_headers(self.client),
             )
             self.assertEqual(response.status_code, status)
             self.assertNotIn("aw_access=", response.headers.get("Set-Cookie", ""))
         response = self.client.post(
-            "/auth/session", json={"access_token": "no-member"}, headers=self.origin
+            "/auth/session",
+            json={"access_token": "no-member"},
+            headers=csrf_headers(self.client),
         )
         self.assertFalse(response.json["approved"])
-        self.assertIn("aw_access=;", response.headers["Set-Cookie"])
+        self.assertIn("aw_access=;", ";".join(response.headers.getlist("Set-Cookie")))
 
     def test_runtime_storage_failure_is_sanitized_503_before_supabase(self):
         with patch.object(

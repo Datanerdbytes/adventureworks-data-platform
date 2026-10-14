@@ -4,15 +4,69 @@ import os
 import base64
 import json
 import secrets
+import hashlib
+import hmac
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 from dotenv import load_dotenv
-from flask import g, jsonify, redirect, render_template, request, session
+from flask import current_app, g, jsonify, redirect, render_template, request, session
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 from governance import GovernanceError, SupabaseGateway
 from rate_limiter import init_limiter, enforce_user_limit
 
 COOKIE = "aw_access"
+CSRF_COOKIE = "aw_csrf"
+CSRF_MAX_AGE = 86400
+
+
+def csrf_signer():
+    return URLSafeTimedSerializer(
+        current_app.secret_key,
+        salt="adventureworks-csrf-v1",
+        signer_kwargs={"digest_method": hashlib.sha256},
+    )
+
+
+def csrf_nonce():
+    try:
+        nonce = csrf_signer().loads(
+            request.cookies.get(CSRF_COOKIE, ""), max_age=CSRF_MAX_AGE
+        )
+    except BadSignature:
+        return None
+    if (
+        not isinstance(nonce, str)
+        or len(nonce) != 64
+        or any(c not in "0123456789abcdef" for c in nonce)
+    ):
+        return None
+    return nonce
+
+
+def csrf_token(nonce):
+    # Bind the signed security session to the current authentication cookie.
+    # No access token is stored in the security cookie or Flask session.
+    access_digest = hashlib.sha256(request.cookies.get(COOKIE, "").encode()).hexdigest()
+    key = current_app.secret_key
+    if isinstance(key, str):
+        key = key.encode()
+    return hmac.new(
+        key, ("csrf-v1:" + nonce + ":" + access_digest).encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def valid_csrf_token(token):
+    nonce = csrf_nonce()
+    return (
+        nonce is not None
+        and isinstance(token, str)
+        and len(token) == 64
+        and all(c in "0123456789abcdef" for c in token)
+        and secrets.compare_digest(csrf_token(nonce), token)
+    )
+
+
 AUTH_PAGES = {
     "/login": "login",
     "/signup": "signup",
@@ -171,6 +225,43 @@ def install_auth(server):
         if request.headers.get("Origin") != server.config["AUTH_APP_ORIGIN"]:
             raise GovernanceError("Request origin is not allowed.", 403)
 
+    def csrf_required():
+        if not valid_csrf_token(request.headers.get("X-CSRF-Token")):
+            raise GovernanceError(
+                "CSRF token missing or invalid. Reload and retry.", 403
+            )
+
+    @server.get("/auth/csrf")
+    @limiter.limit("600 per minute; 12000 per hour")
+    def issue_csrf_token():
+        try:
+            configuration()
+            if (
+                request.headers.get("X-CSRF-Request") != "1"
+                or request.headers.get("Sec-Fetch-Site") == "cross-site"
+                or (
+                    request.headers.get("Origin") is not None
+                    and request.headers["Origin"] != server.config["AUTH_APP_ORIGIN"]
+                )
+            ):
+                raise GovernanceError("Request origin is not allowed.", 403)
+            nonce = csrf_nonce()
+            needs_cookie = nonce is None
+            if needs_cookie:
+                nonce = secrets.token_hex(32)
+            response = jsonify(csrfToken=csrf_token(nonce))
+            if needs_cookie:
+                response.set_cookie(
+                    CSRF_COOKIE,
+                    csrf_signer().dumps(nonce),
+                    httponly=True,
+                    secure=server.config["SESSION_COOKIE_SECURE"],
+                    samesite="Lax",
+                )
+            return response
+        except GovernanceError as error:
+            return failure(error)
+
     def failure(error):
         return jsonify(error=str(error)), error.status
 
@@ -223,9 +314,16 @@ def install_auth(server):
         try:
             configuration()
             origin_required()
+            csrf_required()
             if request.method == "DELETE":
                 session.clear()
                 response = jsonify(signedOut=True)
+                response.delete_cookie(
+                    CSRF_COOKIE,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=server.config["SESSION_COOKIE_SECURE"],
+                )
                 response.delete_cookie(
                     COOKIE,
                     httponly=True,
@@ -262,6 +360,12 @@ def install_auth(server):
             )
             if workspace is None:
                 session.clear()
+                response.delete_cookie(
+                    CSRF_COOKIE,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=server.config["SESSION_COOKIE_SECURE"],
+                )
                 response.delete_cookie(
                     COOKIE,
                     httponly=True,
@@ -304,6 +408,7 @@ def install_auth(server):
     def select_workspace():
         try:
             origin_required()
+            csrf_required()
             client, _ = load_identity()
             load_context(client)
             payload = request.get_json(silent=True) or {}
@@ -343,7 +448,8 @@ def install_auth(server):
         if request.path in PUBLIC_ASSETS and request.method in ("GET", "HEAD"):
             return None
         if (
-            request.path in ("/auth/config", "/auth/status", "/auth/registration")
+            request.path
+            in ("/auth/config", "/auth/status", "/auth/registration", "/auth/csrf")
             and request.method in ("GET", "HEAD")
         ) or (
             request.path in ("/auth/session", "/auth/workspace")
@@ -357,6 +463,12 @@ def install_auth(server):
         ):
             return None
         try:
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                configuration()
+                if not request.cookies.get(COOKIE):
+                    raise GovernanceError("Sign in to continue.", 401)
+                origin_required()
+                csrf_required()
             client, _ = load_identity()
             workspace = load_context(client)
             if workspace is None:

@@ -43,6 +43,8 @@ class FakeGateway:
         self.calls.append((name, payload))
         if name == "registration_workspace":
             return {"name": WORKSPACE["name"], "code": "a" * 48}
+        if name == "create_workspace":
+            return "33333333-3333-3333-3333-333333333333"
         if name == "my_access_request_status":
             return "pending"
         if name == "workspace_context":
@@ -68,3 +70,11 @@ class FakeGateway:
 
     def has_revoked_membership(self, user_id):
         return self.token == "revoked"
+
+
+def csrf_headers(client):
+    response = client.get("/auth/csrf", headers={"X-CSRF-Request": "1"})
+    return {
+        "Origin": "http://localhost",
+        "X-CSRF-Token": (response.json or {}).get("csrfToken", ""),
+    }

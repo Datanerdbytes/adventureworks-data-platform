@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
-from auth_fixtures import CONFIG, FakeGateway, WORKSPACE
+from auth_fixtures import csrf_headers, CONFIG, FakeGateway, WORKSPACE
 
 
 class LoginTests(unittest.TestCase):
@@ -22,13 +22,12 @@ class LoginTests(unittest.TestCase):
             item = patch.dict(mapping, values)
             item.start()
             self.addCleanup(item.stop)
-        self.origin = {"Origin": "http://localhost"}
 
     def sync(self, token="approved", next="/workspace"):
         return self.client.post(
             "/auth/session",
             json={"access_token": token, "next": next},
-            headers=self.origin,
+            headers=csrf_headers(self.client),
         )
 
     def test_revoked_sign_in_reports_revocation_and_clears_cookie(self):
@@ -121,7 +120,7 @@ class LoginTests(unittest.TestCase):
                 "state": [],
                 "changedPropIds": ["app-location.pathname"],
             },
-            headers=self.origin,
+            headers=csrf_headers(self.client),
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("owner@example.test", response.get_data(as_text=True))
@@ -158,13 +157,17 @@ class LoginTests(unittest.TestCase):
         )
         self.sync()
         self.assertEqual(
-            self.client.post("/auth/session", json={}, headers=self.origin).status_code,
+            self.client.post(
+                "/auth/session", json={}, headers=csrf_headers(self.client)
+            ).status_code,
             401,
         )
         self.assertEqual(self.client.delete("/auth/session").status_code, 403)
         self.assertEqual(
             self.client.post(
-                "/auth/workspace", json={"workspace_id": "forged"}, headers=self.origin
+                "/auth/workspace",
+                json={"workspace_id": "forged"},
+                headers=csrf_headers(self.client),
             ).status_code,
             403,
         )
@@ -172,7 +175,7 @@ class LoginTests(unittest.TestCase):
             self.client.post(
                 "/auth/workspace",
                 json={"workspace_id": WORKSPACE["id"]},
-                headers=self.origin,
+                headers=csrf_headers(self.client),
             ).status_code,
             200,
         )
@@ -196,7 +199,10 @@ class LoginTests(unittest.TestCase):
         self.assertEqual(self.client.get("/_dash-dependencies").status_code, 401)
         self.sync()
         self.assertEqual(
-            self.client.delete("/auth/session", headers=self.origin).status_code, 200
+            self.client.delete(
+                "/auth/session", headers=csrf_headers(self.client)
+            ).status_code,
+            200,
         )
         self.assertEqual(self.client.get("/_dash-layout").status_code, 401)
 
@@ -268,7 +274,7 @@ class LoginTests(unittest.TestCase):
                 ],
                 "changedPropIds": ["workspace-admin-change.n_clicks"],
             },
-            headers=self.origin,
+            headers=csrf_headers(self.client),
         )
         self.assertEqual(response.status_code, 403)
         self.assertFalse(
