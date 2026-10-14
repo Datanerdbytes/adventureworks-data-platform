@@ -1,6 +1,7 @@
 """One consistent set of warehouse filters for the executive report."""
 
 import logging
+from typing import Any
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -613,7 +614,7 @@ def populate_report(
     chart_type="line",
     breakdown_type="bar",
 ):
-    columns = [
+    columns: list[dict[str, Any]] = [
         {"field": name}
         for name in (
             "Category",

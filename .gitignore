@@ -11,6 +11,8 @@ gcp-key.json
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .pdm-home/
 .cache/
 CACHEDIR.TAG

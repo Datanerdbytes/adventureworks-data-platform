@@ -5,26 +5,11 @@ mart supplies calendar/channel semantics. Neither retains customer IDs or
 customer-state/month grain, so compute non-additive KPIs from their source facts.
 """
 
-import re
-
 from google.cloud import bigquery
 from revenue_kpis import cache, filter_parameters
-
-
-def validate_warehouse_identifiers(project, dataset):
-    """Validate BigQuery project and dataset identifiers to prevent SQL injection.
-
-    Args:
-        project: GCP project ID (lowercase, alphanumeric, hyphens)
-        dataset: BigQuery dataset ID (alphanumeric, underscores)
-
-    Raises:
-        ValueError: If identifiers don't match expected patterns.
-    """
-    if not re.fullmatch(r"[a-z][a-z0-9-]*", project) or not re.fullmatch(
-        r"[A-Za-z_][A-Za-z0-9_]*", dataset
-    ):
-        raise ValueError("Invalid analytics project or dataset configuration")
+from revenue_kpis import (
+    validate_warehouse_identifiers as validate_warehouse_identifiers,
+)
 
 
 def customer_cohort_ctes(project, dataset):
@@ -77,12 +62,12 @@ def customer_cohort_ctes(project, dataset):
           SELECT 1 FROM scoped s WHERE s.customer_key = a.customer_key
             AND s.sales_channel = 'Internet' AND s.order_date <= as_of))
     )
-    """
+    """  # nosec B608
 
 
 def customer_scorecards_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return customer_cohort_ctes(project, dataset) + f""", last_orders AS (
+    return customer_cohort_ctes(project, dataset) + """, last_orders AS (
       SELECT c.customer_key, COALESCE(MAX(h.order_date), c.acquired_on) AS last_order
       FROM cohort c CROSS JOIN cutoff LEFT JOIN history h ON c.customer_key = h.customer_key
         AND h.sales_channel = 'Internet' AND h.order_date <= as_of
@@ -119,7 +104,7 @@ def customer_scorecards_sql(project, dataset):
       (SELECT AS STRUCT state, country, increase, current_orders, previous_orders FROM state_growth
         ORDER BY increase DESC, state, country LIMIT 1) AS top_state
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -132,6 +117,7 @@ def load_customer_scorecards(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             customer_scorecards_sql(project, dataset),
@@ -187,7 +173,7 @@ def customer_demographics_sql(project, dataset):
            WHEN age < 60 THEN '45–59' ELSE '60+' END AS age_group,
       COUNT(DISTINCT customer_key) AS customers, MAX(as_of) AS as_of
     FROM ages GROUP BY 1, 2 ORDER BY 1, 2 LIMIT 1001
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -200,6 +186,7 @@ def load_customer_demographics(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             customer_demographics_sql(project, dataset),
@@ -228,7 +215,7 @@ def customer_map_sql(project, dataset, use_mart=False):
           customer_state_province AS state, SUM(gross_revenue_amount) AS revenue
           FROM `{project}.{dataset}.marts_demographic_regional_insights`
           WHERE (@channel IS NULL OR sales_channel = @channel)
-          GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""
+          GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""  # nosec B608
     return f"""SELECT t.territory_group, t.territory_country AS country,
       CASE WHEN s.sales_channel = 'Reseller' THEN 'Wholesale/Reseller'
            ELSE COALESCE(NULLIF(TRIM(c.state_province_name), ''), 'Unknown') END AS state,
@@ -243,7 +230,7 @@ def customer_map_sql(project, dataset, use_mart=False):
         AND (@channel IS NULL OR s.sales_channel = @channel)
         AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
         AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
-      GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""
+      GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -256,6 +243,7 @@ def load_customer_map(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     from google.api_core.exceptions import NotFound
 
     with bigquery.Client(project=project) as client:
@@ -310,7 +298,7 @@ def customer_lifecycle_sql(project, dataset):
     )
     SELECT stage, COUNT(DISTINCT customer_key) AS customers, MAX(as_of) AS as_of
     FROM lifecycle GROUP BY stage LIMIT 4
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -323,6 +311,7 @@ def load_customer_lifecycle(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             customer_lifecycle_sql(project, dataset),
@@ -367,7 +356,7 @@ def customer_segment_revenue_sql(project, dataset, dimension):
         AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
         AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
         AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
-      GROUP BY 1 ORDER BY revenue DESC, segment LIMIT 101"""
+      GROUP BY 1 ORDER BY revenue DESC, segment LIMIT 101"""  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -381,6 +370,7 @@ def load_customer_segment_revenue(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             customer_segment_revenue_sql(project, dataset, dimension),
@@ -459,7 +449,7 @@ def customer_ledger_sql(project, dataset):
     JOIN income_ranked i ON r.country = i.country AND r.state = i.state AND i.rank = 1
     JOIN occupation_ranked o ON r.country = o.country AND r.state = o.state AND o.rank = 1
     ORDER BY revenue DESC, country, state LIMIT 1001
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -472,6 +462,7 @@ def load_customer_ledger(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             customer_ledger_sql(project, dataset),

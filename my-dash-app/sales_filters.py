@@ -48,7 +48,8 @@ def filter_layout(prefix):
 
 def valid_values(rows, selections):
     """Reset invalid persisted values, including a child outside its category."""
-    choices, values = [], []
+    choices: list[list[dict[str, int | str]]] = []
+    values: list[int | str] = []
     for index, (_, column) in enumerate(FIELDS.values()):
         allowed = sorted(
             {

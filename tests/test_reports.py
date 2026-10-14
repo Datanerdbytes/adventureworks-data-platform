@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app
+from app import app as app  # Initializes Dash page/callback registration.
 import dash
 from analytics import REPORTS, build_report, sales_fixture
 

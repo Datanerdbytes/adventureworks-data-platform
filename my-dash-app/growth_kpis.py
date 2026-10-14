@@ -4,12 +4,13 @@ from decimal import Decimal
 import pandas as pd
 from google.cloud import bigquery
 from google.api_core.exceptions import NotFound
-from revenue_kpis import cache, filter_parameters
+from revenue_kpis import cache, filter_parameters, validate_warehouse_identifiers
 
 
 def growth_scorecards_sql(project, dataset, product_filtered=False):
     # The mart has no product dimensions. Rebuild its monthly grain from filtered
     # facts for product selections rather than silently dropping those filters.
+    validate_warehouse_identifiers(project, dataset)
     monthly = (
         "SELECT DATE_TRUNC(order_date, MONTH) AS month, SUM(revenue) AS revenue FROM daily GROUP BY 1"
         if product_filtered
@@ -17,7 +18,7 @@ def growth_scorecards_sql(project, dataset, product_filtered=False):
                          SUM(periodic_gross_revenue) AS revenue
                   FROM `{project}.{dataset}.marts_growth_trends`
                   WHERE (@channel IS NULL OR sales_channel = @channel)
-                  GROUP BY 1"""
+                  GROUP BY 1"""  # nosec B608
     )
     return f"""
     WITH invoices AS (
@@ -52,7 +53,7 @@ def growth_scorecards_sql(project, dataset, product_filtered=False):
       (SELECT rolling_revenue FROM rolling WHERE order_date = (SELECT MAX(order_date) FROM selected)) AS rolling_revenue,
       (SELECT SAFE_DIVIDE(SUM(orders), COUNT(DISTINCT order_date)) FROM selected) AS order_velocity
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -65,6 +66,7 @@ def load_growth_scorecards(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         use_facts = category is not None or subcategory is not None
         source = "Product-filtered sales facts" if use_facts else "Growth mart"
@@ -122,8 +124,8 @@ def calculate_scorecards(data, year=None, quarter=None):
     latest = max(selected)
     current_q = latest.asfreq("Q")
     previous_q = current_q - 1
-    quarterly = {}
-    annual = {}
+    quarterly: dict[pd.Period, Decimal] = {}
+    annual: dict[int, Decimal] = {}
     for month, revenue in monthly.items():
         q = month.asfreq("Q")
         quarterly[q] = quarterly.get(q, Decimal(0)) + revenue
@@ -137,7 +139,7 @@ def calculate_scorecards(data, year=None, quarter=None):
 
     qoq = change(quarterly.get(current_q), quarterly.get(previous_q))
     yoy = change(annual.get(latest.year), annual.get(latest.year - 1))
-    avg = sum(selected.values()) / len(selected)
+    avg = sum(selected.values(), Decimal(0)) / len(selected)
     anchor = pd.Timestamp(data["anchor_date"])
     first = pd.Timestamp(data["first_date"])
     full_window = (anchor - first).days >= 29
@@ -163,6 +165,7 @@ def calculate_scorecards(data, year=None, quarter=None):
 
 
 def day_type_sales_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT d.calendar_year, d.month_number, d.is_weekend_flag,
            SUM(s.sales_amount) AS revenue
@@ -177,7 +180,7 @@ def day_type_sales_sql(project, dataset):
     GROUP BY 1, 2, 3
     ORDER BY 1, 2, 3
     LIMIT 2401
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -190,6 +193,7 @@ def load_day_type_sales(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             day_type_sales_sql(project, dataset),
@@ -212,6 +216,7 @@ def load_day_type_sales(
 
 
 def seasonality_matrix_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT d.month_number, TRIM(d.day_of_week_name) AS day_name,
            SUM(s.order_quantity) AS units
@@ -226,7 +231,7 @@ def seasonality_matrix_sql(project, dataset):
     GROUP BY 1, 2
     ORDER BY 1, 2
     LIMIT 84
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -239,6 +244,7 @@ def load_seasonality_matrix(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             seasonality_matrix_sql(project, dataset),
@@ -258,6 +264,7 @@ def load_seasonality_matrix(
 
 
 def growth_ledger_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     WITH invoices AS (
       SELECT DATE_TRUNC(d.calendar_date, MONTH) AS month,
@@ -292,7 +299,7 @@ def growth_ledger_sql(project, dataset):
       AND (@quarter IS NULL OR CONCAT('Q', CAST(EXTRACT(QUARTER FROM month) AS STRING)) = @quarter)
     ORDER BY month
     LIMIT 1201
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -305,6 +312,7 @@ def load_growth_ledger(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             growth_ledger_sql(project, dataset),

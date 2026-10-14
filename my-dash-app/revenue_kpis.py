@@ -46,19 +46,28 @@ def init_kpi_cache(server):
     )
 
 
+def validate_warehouse_identifiers(project, dataset):
+    """Allow only identifier characters; SQL values must still be bound separately."""
+    if (
+        not isinstance(project, str)
+        or not isinstance(dataset, str)
+        or not re.fullmatch(r"[a-z][a-z0-9-]*", project)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dataset)
+    ):
+        raise ValueError("Invalid analytics project or dataset configuration")
+
+
 def warehouse_location():
     project = os.environ.get("GBQ_PROJECT_ID", "quantum-echo-data-eng-prod")
     dataset = os.environ.get("BQ_ANALYTICS_DATASET", "gold_adventureworks")
-    if not re.fullmatch(r"[a-z][a-z0-9-]*", project) or not re.fullmatch(
-        r"[A-Za-z_][A-Za-z0-9_]*", dataset
-    ):
-        raise ValueError("Invalid analytics project or dataset configuration")
+    validate_warehouse_identifiers(project, dataset)
     return project, dataset
 
 
 def kpi_sql(project, dataset):
     # Product-level order counts overlap. Distinct channel/order pairs preserve
     # basket-level order identity without conflating the two sales channels.
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     WITH financials AS (
       SELECT SUM(gross_revenue_amount) AS gross_revenue_amount,
@@ -84,11 +93,12 @@ def kpi_sql(project, dataset):
            source_rows, first_year, last_year
     FROM financials CROSS JOIN orders
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
 def load_revenue_kpis(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             kpi_sql(project, dataset),
@@ -210,11 +220,12 @@ def kpi_cards(values=None, note="All-time warehouse total"):
 
 @cache.memoize(timeout=300)
 def load_filter_catalog(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     sql = f"""SELECT DISTINCT calendar_year, calendar_quarter_name, sales_channel,
         product_category, product_subcategory
         FROM `{project}.{dataset}.revenue_sales_performance`
         ORDER BY calendar_year, calendar_quarter_name, sales_channel, product_category, product_subcategory
-        LIMIT 10000"""
+        LIMIT 10000"""  # nosec B608
     with bigquery.Client(project=project) as client:
         rows = [
             dict(row)
@@ -229,6 +240,7 @@ def load_filter_catalog(project, dataset):
 
 
 def executive_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     WITH filtered AS (
       SELECT calendar_year, calendar_quarter_name, month_name, sales_channel,
@@ -270,7 +282,7 @@ def executive_sql(project, dataset):
           FROM filtered GROUP BY product_category, product_subcategory
           ORDER BY revenue DESC) AS detail
     FROM financials CROSS JOIN orders LIMIT 1
-    """
+    """  # nosec B608
 
 
 def filter_parameters(
@@ -297,6 +309,7 @@ def load_executive_report(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     filters = (project, dataset, year, quarter, channel, category, subcategory)
     # Bounded lock stripes avoid accumulating a file for every filter selection.
     stripe = int(hashlib.sha256(repr(filters).encode()).hexdigest(), 16) % 64
@@ -323,6 +336,7 @@ def _load_executive_report(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             executive_sql(project, dataset),

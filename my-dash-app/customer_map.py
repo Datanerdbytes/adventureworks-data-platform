@@ -6,6 +6,7 @@ import unicodedata
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 import plotly.graph_objects as go
 from theme import TOKENS, style_figure
 
@@ -39,7 +40,9 @@ def revenue_map(rows, group=OVERVIEW):
         for name in [p["name"], *p["aliases"]]:
             for alias in name.split("|"):
                 states[(p["country"], normalized(alias))] = feature
-    features, totals, labels = {}, {}, {}
+    features: dict[str, dict[str, Any]] = {}
+    totals: dict[str, Decimal] = {}
+    labels: dict[str, str] = {}
     omitted = Decimal(0)
     seen_countries = set()
     for row in rows:

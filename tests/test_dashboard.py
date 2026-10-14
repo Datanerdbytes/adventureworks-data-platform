@@ -1,6 +1,5 @@
 """Offline routing and fixture/callback regression checks."""
 
-import base64
 import sys
 from unittest.mock import patch
 import unittest

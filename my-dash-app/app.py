@@ -1,7 +1,5 @@
 """Local demo entrypoint: uv run python my-dash-app/app.py."""
 
-import os
-
 from dash import Dash, Input, Output, clientside_callback, dcc, html, page_container
 from flask import Flask, Response, g, has_request_context, render_template
 from auth import install_auth
@@ -58,7 +56,6 @@ def serve_layout():
         else "Workspace member"
     )
     workspace = getattr(g, "workspace", None) if has_request_context() else None
-    context = getattr(g, "workspace_context", {}) if has_request_context() else {}
     role = workspace["role"] if workspace else ""
     can_admin = role in {"owner", "admin", "platform_admin"}
     initials = "".join(

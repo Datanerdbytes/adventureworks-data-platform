@@ -38,7 +38,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Married', 'Single']
+                values: ["Married", "Single"]
           - no_unwanted_spaces
 
       - name: gender
@@ -46,7 +46,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Male', 'Female']
+                values: ["Male", "Female"]
           - no_unwanted_spaces
   # ========================================================================
   # STG_PRODUCT TESTS
@@ -62,7 +62,7 @@ models:
       - name: product_name
         description: "Guarantees that no nameless inventory records leak downstream."
         data_tests:
-          - not_null 
+          - not_null
           - no_unwanted_spaces
 
       - name: product_line
@@ -71,7 +71,7 @@ models:
           - no_unwanted_spaces
           - accepted_values:
               arguments:
-                values: ['Mountain', 'Road', 'Touring', 'Components', 'Unknown']
+                values: ["Mountain", "Road", "Touring", "Components", "Unknown"]
 
       - name: model_name
         description: "Name of the product model associated with the item."

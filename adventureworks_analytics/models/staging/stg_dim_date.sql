@@ -19,7 +19,7 @@ select
 
     -- 📅 Calendar Date Primitives
     cast(fulldatealternatekey as date) as calendar_date,
-    
+
     -- Day properties: Sunday = 1 through Saturday = 7.
     cast(daynumberofweek as int64) as day_of_week_number,
     trim(englishdaynameofweek) as day_of_week_name,

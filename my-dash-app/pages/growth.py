@@ -172,7 +172,7 @@ def compact(value, currency=False):
 
 
 def monthly_totals(rows):
-    totals = {}
+    totals: dict[pd.Period, Decimal] = {}
     for row in rows:
         month = list(calendar.month_name).index(row["month_name"].strip())
         period = pd.Period(year=int(row["calendar_year"]), month=month, freq="M")
@@ -666,7 +666,15 @@ def populate_secondary(
         baseline = (
             values
             if normalized[:2] == [None, None]
-            else load_executive_report(*location, None, None, *normalized[2:])
+            else load_executive_report(
+                location[0],
+                location[1],
+                None,
+                None,
+                normalized[2],
+                normalized[3],
+                normalized[4],
+            )
         )
         _, second, _, _ = render_growth(values, baseline)
         return second, title, ""

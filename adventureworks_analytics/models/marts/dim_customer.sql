@@ -16,12 +16,12 @@ select
     c.first_name,
     c.middle_name,
     c.last_name,
-    
+
     -- Consolidates separate naming fields into a beautiful, presentation-ready full name string
     trim(
-        coalesce(c.title || ' ', '') || 
-        c.first_name || ' ' || 
-        coalesce(c.middle_name || ' ', '') || 
+        coalesce(c.title || ' ', '') ||
+        c.first_name || ' ' ||
+        coalesce(c.middle_name || ' ', '') ||
         c.last_name
     ) as full_name,
 
@@ -48,5 +48,5 @@ select
     c.date_first_purchase
 
 from staged_customers c
-left join raw_geography g 
+left join raw_geography g
     on c.geography_key = g.geographykey

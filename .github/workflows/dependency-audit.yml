@@ -31,7 +31,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Export locked production dependencies
-        run: uv export --frozen --no-dev --format=requirements.txt --output-file requirements.lock.txt
+        run: uv export --locked --no-dev --format=requirements.txt --output-file requirements.lock.txt
 
       - name: Run pip-audit against locked dependencies
-        run: uv run --python 3.12 pip-audit --requirement requirements.lock.txt --strict
+        run: uv run --locked --python 3.12 pip-audit --requirement requirements.lock.txt --strict

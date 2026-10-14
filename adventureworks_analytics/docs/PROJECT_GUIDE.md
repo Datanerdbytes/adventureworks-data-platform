@@ -7,19 +7,19 @@ relations and business reporting tables. Open the graph icon to explore model li
 
 ## Reporting grains
 
-| Mart | Grain | Business behavior |
-| --- | --- | --- |
-| fct_sales | Channel + sales order + line item | UNION ALL of Internet and Reseller sales; gross profit = sales amount − total product cost |
-| dim_customer | Customer key | Customer attributes with source geography |
-| dim_product | Product key (historical version) | Finished goods only; product IDs may repeat |
-| dim_date | Calendar day / date key | Calendar attributes, quarter label, weekend flag |
-| dim_reseller | Reseller key | Corporate attributes with source geography |
-| dim_sales_territory | Territory key | Region, country, corporate group; preserves the NA placeholder |
-| int_product_sales | Channel + sales order + line item | Shared product enrichment; preserves unmatched keys; ephemeral SQL, not a warehouse table |
-| revenue_sales_performance | Year + month + channel + category/subcategory/product name | Monthly sales; combines product versions with identical names and hierarchy |
-| marts_product_sales_performance | Product key + channel | All-time product sales; historical versions stay separate; replaces the inventory-named model |
-| marts_growth_trends | Year + month + channel + weekday/weekend | Monthly segmented sales and AOV; no moving average or growth-rate calculation |
-| marts_demographic_regional_insights | Territory group/country/region + customer state/city + channel + occupation/education/gender/income bracket | All-time demographic sales; Internet unknowns remain distinct from wholesale labels |
+| Mart                                | Grain                                                                                                       | Business behavior                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| fct_sales                           | Channel + sales order + line item                                                                           | UNION ALL of Internet and Reseller sales; gross profit = sales amount − total product cost    |
+| dim_customer                        | Customer key                                                                                                | Customer attributes with source geography                                                     |
+| dim_product                         | Product key (historical version)                                                                            | Finished goods only; product IDs may repeat                                                   |
+| dim_date                            | Calendar day / date key                                                                                     | Calendar attributes, quarter label, weekend flag                                              |
+| dim_reseller                        | Reseller key                                                                                                | Corporate attributes with source geography                                                    |
+| dim_sales_territory                 | Territory key                                                                                               | Region, country, corporate group; preserves the NA placeholder                                |
+| int_product_sales                   | Channel + sales order + line item                                                                           | Shared product enrichment; preserves unmatched keys; ephemeral SQL, not a warehouse table     |
+| revenue_sales_performance           | Year + month + channel + category/subcategory/product name                                                  | Monthly sales; combines product versions with identical names and hierarchy                   |
+| marts_product_sales_performance     | Product key + channel                                                                                       | All-time product sales; historical versions stay separate; replaces the inventory-named model |
+| marts_growth_trends                 | Year + month + channel + weekday/weekend                                                                    | Monthly segmented sales and AOV; no moving average or growth-rate calculation                 |
+| marts_demographic_regional_insights | Territory group/country/region + customer state/city + channel + occupation/education/gender/income bracket | All-time demographic sales; Internet unknowns remain distinct from wholesale labels           |
 
 ## Transformation rules
 
@@ -140,15 +140,15 @@ tests**. Counts describe configuration, not a fresh production test execution.
 The table counts tests attached to each reporting/core model; standalone SQL
 reconciliation tests also contribute to the project total.
 
-| Model | Attached tests | Warning-level tests |
-| --- | --- | --- |
-| dim_customer | 46 | 1 |
-| dim_date | 10 | 0 |
-| dim_product | 41 | 4 |
-| dim_reseller | 38 | 0 |
-| dim_sales_territory | 21 | 1 |
-| fct_sales | 18 | 0 |
-| marts_demographic_regional_insights | 25 | 0 |
-| marts_growth_trends | 20 | 0 |
-| marts_product_sales_performance | 24 | 0 |
-| revenue_sales_performance | 12 | 0 |
+| Model                               | Attached tests | Warning-level tests |
+| ----------------------------------- | -------------- | ------------------- |
+| dim_customer                        | 46             | 1                   |
+| dim_date                            | 10             | 0                   |
+| dim_product                         | 41             | 4                   |
+| dim_reseller                        | 38             | 0                   |
+| dim_sales_territory                 | 21             | 1                   |
+| fct_sales                           | 18             | 0                   |
+| marts_demographic_regional_insights | 25             | 0                   |
+| marts_growth_trends                 | 20             | 0                   |
+| marts_product_sales_performance     | 24             | 0                   |
+| revenue_sales_performance           | 12             | 0                   |

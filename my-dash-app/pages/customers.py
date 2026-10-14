@@ -244,7 +244,8 @@ def demographic_figures(rows, empty_message="No retail customers match these fil
             return figure
 
         return empty(), empty()
-    regions, ages = {}, {}
+    regions: dict[str, int] = {}
+    ages: dict[str, int] = {}
     for row in rows:
         regions[row["region"]] = regions.get(row["region"], 0) + int(row["customers"])
         ages[row["age_group"]] = ages.get(row["age_group"], 0) + int(row["customers"])

@@ -1,6 +1,8 @@
 """REST error handling and administration callbacks are tested without services."""
 
-import io, json, sys, unittest
+import io
+import sys
+import unittest
 from pathlib import Path
 from unittest.mock import patch, Mock
 from urllib.error import HTTPError, URLError
@@ -28,7 +30,11 @@ class GovernanceTests(unittest.TestCase):
             ),
         ):
             with (
-                patch.dict("os.environ", values, clear=True),
+                patch.dict(
+                    "os.environ",
+                    {**values, "RATE_LIMIT_ENVIRONMENT": "testing"},
+                    clear=True,
+                ),
                 patch("auth.load_dotenv"),
             ):
                 server = Flask("key-name-test")

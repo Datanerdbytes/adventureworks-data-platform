@@ -33,9 +33,9 @@ select
     case when s.sales_channel = 'Reseller' then 'N/A - Wholesale'
         else coalesce(nullif(trim(c.gender), ''), 'Unknown')
     end as customer_gender,
-    
+
     -- Income Brackets to group purchasing power easily on charts
-    case 
+    case
         when s.sales_channel = 'Reseller' then 'N/A - Wholesale'
         when c.yearly_income is null then 'Unknown'
         when c.yearly_income < 30000 then 'Low Income (<30k)'
@@ -51,9 +51,9 @@ select
     round(sum(s.sales_amount) - sum(s.total_product_cost), 2) as gross_profit_amount
 
 from sales_core s
-left join customer_dimension c 
+left join customer_dimension c
     on s.customer_key = c.customer_key
-inner join territory_dimension t 
+inner join territory_dimension t
     on s.sales_territory_key = t.sales_territory_key
 
 group by 1, 2, 3, 4, 5, 6, 7, 8, 9, 10

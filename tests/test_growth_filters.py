@@ -5,7 +5,7 @@ from unittest.mock import patch
 from dash.exceptions import PreventUpdate
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app
+from app import app as app  # Initializes Dash page/callback registration.
 from pages.growth import populate_growth, render_growth
 from test_wholesale_kpis import CATALOG, ALL
 
@@ -32,7 +32,6 @@ class GrowthTests(unittest.TestCase):
         self.assertIsNone(render_growth(values, history)[2][0]["Monthly growth (%)"])
 
     def test_all_filters_and_baseline_scope(self):
-        values = report([(2026, "January", 150)])
         with (
             patch("pages.growth.load_filter_catalog", return_value=CATALOG),
             patch("pages.growth.load_growth_ledger", return_value=[]) as loader,

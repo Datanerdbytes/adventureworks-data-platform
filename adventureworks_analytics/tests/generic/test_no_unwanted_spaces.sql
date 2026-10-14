@@ -5,7 +5,7 @@ with validation_errors as (
     select
         {{ column_name }} as invalid_value
     from {{ model }}
-    where 
+    where
         -- Catches leading or trailing spaces
         {{ column_name }} != trim({{ column_name }})
         -- Optional: Catches double/multiple consecutive middle spaces (e.g., 'John  Doe')

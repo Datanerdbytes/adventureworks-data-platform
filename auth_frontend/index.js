@@ -270,7 +270,11 @@ async function initialize() {
     else if (result.approved) location.replace("/workspace");
     else
       status(
-        loginNotice(new URLSearchParams({ approval: result.requestStatus || "unavailable" })),
+        loginNotice(
+          new URLSearchParams({
+            approval: result.requestStatus || "unavailable",
+          }),
+        ),
         result.requestStatus === "revoked",
       );
   } else if (isDashboard) {

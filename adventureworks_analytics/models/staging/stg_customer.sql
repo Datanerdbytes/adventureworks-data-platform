@@ -2,7 +2,7 @@ with source_data as (
     select * from {{ source('raw_adventureworks', 'dimcustomer') }}
 )
 
-select 
+select
     -- 🔑 Primary Key
     cast(customerkey as int64) as customer_key,
     cast(geographykey as int64) as geography_key,
@@ -16,15 +16,15 @@ select
 
     -- 📆 Dates & Status
     cast(birthdate as date) as birth_date,
-    case 
+    case
         when upper(maritalstatus) = 'M' then 'Married'
         when upper(maritalstatus) = 'S' then 'Single'
-        else null 
+        else null
     end as marital_status,
     case
         when upper(gender) = 'M' then 'Male'
         when upper(gender) = 'F' then 'Female'
-        else null 
+        else null
     end as gender,
     emailaddress as email_address,
 
