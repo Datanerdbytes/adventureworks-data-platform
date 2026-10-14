@@ -7,12 +7,15 @@
   },
   "scripts": {
     "build:auth": "node scripts/build-auth.mjs",
-    "test:auth": "node --test auth_frontend/*.test.js"
+    "test:auth": "node --test auth_frontend/*.test.js",
+    "format:check": "prettier --check",
+    "format": "prettier --write"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.76.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "prettier": "3.9.10"
   }
 }

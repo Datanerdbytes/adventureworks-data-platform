@@ -2,7 +2,7 @@ import unittest
 import sqlite3
 import re
 from unittest.mock import patch
-from test_customer_kpis import app, CATALOG, ALL
+from test_customer_kpis import CATALOG, ALL
 from customer_kpis import customer_segment_revenue_sql
 from pages.customers import (
     segment_revenue_figure,

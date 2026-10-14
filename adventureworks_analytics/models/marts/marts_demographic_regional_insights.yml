@@ -82,7 +82,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['Internet', 'Reseller']
+                values: ["Internet", "Reseller"]
       - name: customer_occupation
         data_tests: [not_null]
       - name: customer_education_level
@@ -95,7 +95,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['Male', 'Female', 'Unknown', 'N/A - Wholesale']
+                values: ["Male", "Female", "Unknown", "N/A - Wholesale"]
       - name: customer_income_bracket
         description: >-
           Income boundaries are below 30000, [30000,70000), [70000,100000),
@@ -106,12 +106,12 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - 'Low Income (<30k)'
-                  - 'Middle Income (30k-70k)'
-                  - 'High Income (70k-100k)'
-                  - 'Very High Income (100k+)'
-                  - 'Unknown'
-                  - 'N/A - Wholesale'
+                  - "Low Income (<30k)"
+                  - "Middle Income (30k-70k)"
+                  - "High Income (70k-100k)"
+                  - "Very High Income (100k+)"
+                  - "Unknown"
+                  - "N/A - Wholesale"
       - name: total_orders_count
         description: >-
           Distinct order numbers within each segment and channel. Do not sum
@@ -120,7 +120,7 @@ models:
           - not_null
           - dbt_utils.expression_is_true:
               arguments:
-                expression: '> 0'
+                expression: "> 0"
       - name: total_units_sold
         data_tests: [not_null]
       - name: gross_revenue_amount

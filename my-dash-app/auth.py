@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 from dotenv import load_dotenv
-from flask import Response, g, jsonify, redirect, render_template, request, session
+from flask import g, jsonify, redirect, render_template, request, session
 from governance import GovernanceError, SupabaseGateway
 from rate_limiter import init_limiter, enforce_user_limit
 

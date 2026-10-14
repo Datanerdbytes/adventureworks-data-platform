@@ -40,15 +40,15 @@ The old blanket `RATE_LIMIT_TRUST_PROXY=1` setting is rejected at startup.
 All limits below apply per endpoint. Session POST and DELETE have separate quotas.
 HEAD requests on read-only endpoints share the GET IP quota.
 
-| Endpoint | IP limits | Verified account limits |
-| --- | --- | --- |
-| GET `/auth/config` | 30/minute, 100/hour | — |
-| GET `/auth/registration` | 20/minute, 60/hour | — |
-| POST `/auth/session` | 30/minute, 300/hour | 60/minute, 300/hour |
-| DELETE `/auth/session` | 120/minute, 600/hour | — |
-| GET `/auth/status` | 120/minute, 600/hour | 120/minute, 600/hour |
-| POST `/auth/workspace` | 30/minute, 100/hour | 30/minute, 100/hour |
-| Login/signup/callback/recovery/access-pending pages | 20/minute, 60/hour | — |
+| Endpoint                                            | IP limits            | Verified account limits |
+| --------------------------------------------------- | -------------------- | ----------------------- |
+| GET `/auth/config`                                  | 30/minute, 100/hour  | —                       |
+| GET `/auth/registration`                            | 20/minute, 60/hour   | —                       |
+| POST `/auth/session`                                | 30/minute, 300/hour  | 60/minute, 300/hour     |
+| DELETE `/auth/session`                              | 120/minute, 600/hour | —                       |
+| GET `/auth/status`                                  | 120/minute, 600/hour | 120/minute, 600/hour    |
+| POST `/auth/workspace`                              | 30/minute, 100/hour  | 30/minute, 100/hour     |
+| Login/signup/callback/recovery/access-pending pages | 20/minute, 60/hour   | —                       |
 
 IP limits run before Supabase validation. Account limits use the identity returned
 by server-side Supabase verification and run before membership/RPC work. They do

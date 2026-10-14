@@ -12,7 +12,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from auth import install_auth
 from auth_fixtures import CONFIG, FakeGateway
-from rate_limiter import USER_LIMITS, init_limiter
+from rate_limiter import USER_LIMITS
 
 
 class CountingGateway(FakeGateway):

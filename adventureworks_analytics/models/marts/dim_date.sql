@@ -8,7 +8,7 @@ select
 
     -- 📅 Calendar Date Primitives
     calendar_date,
-    
+
     -- 🗓️ Day Properties
     day_of_week_number,
     day_of_week_name,
@@ -32,9 +32,9 @@ select
 
     -- 🛡️ BUSINESS REPORTING FLAGS
     -- Instantly isolates weekends without forcing BI tools to calculate day numbers dynamically
-    case 
-        when day_of_week_number in (1, 7) then true 
-        else false 
+    case
+        when day_of_week_number in (1, 7) then true
+        else false
     end as is_weekend_flag
 
 from staged_date

@@ -3,7 +3,7 @@ import sqlite3
 import unittest
 from datetime import date
 from unittest.mock import patch
-from test_customer_kpis import app, CATALOG, ALL
+from test_customer_kpis import CATALOG, ALL
 from customer_kpis import customer_ledger_sql
 from pages.customers import (
     populate_customer_ledger,

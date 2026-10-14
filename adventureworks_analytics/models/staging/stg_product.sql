@@ -26,20 +26,20 @@ select
 
     -- 📊 Inventory Specifications
     cast(p.weight as float64) as weight,
-    case 
+    case
         when upper(trim(p.productline)) = 'M'  then 'Mountain'
         when upper(trim(p.productline)) = 'R'  then 'Road'
         when upper(trim(p.productline)) = 'T'  then 'Touring'
-        when upper(trim(p.productline)) = 'S'  then 'Components'  
+        when upper(trim(p.productline)) = 'S'  then 'Components'
     else 'Unknown'
     end as product_line,
-    case 
+    case
         when upper(trim(p.class)) = 'L' then 'Low'
         when upper(trim(p.class)) = 'M' then 'Medium'
         when upper(trim(p.class)) = 'H' then 'High'
     else 'Unknown'
     end as class,
-    
+
     case
         when upper(trim(p.style)) = 'U' then 'Universal'
         when upper(trim(p.style)) = 'W' then 'Women'
@@ -53,11 +53,11 @@ select
     cast(p.listprice as float64) as list_price,
 
     -- 🛠️ Statuses & Flags
-    case 
+    case
         when p.finishedgoodsflag is true then 'Finished Good'
         else 'Component/Raw Material'
     end as product_status,
-    
+
     p.status as current_status,
 
     -- 📆 Product Timeline Tracking
@@ -69,7 +69,7 @@ select
     c.englishproductcategoryname as category_name
 
 from raw_products p
-left join raw_subcategories s 
+left join raw_subcategories s
     on p.productsubcategorykey = s.productsubcategorykey
-left join raw_categories c 
+left join raw_categories c
     on s.productcategorykey = c.productcategorykey

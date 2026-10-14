@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from test_customer_kpis import app, CATALOG, ALL
+from test_customer_kpis import CATALOG, ALL
 from pages.customers import demographic_figures, populate_demographics, layout
 from dash.exceptions import PreventUpdate
 

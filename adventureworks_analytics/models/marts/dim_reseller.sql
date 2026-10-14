@@ -28,5 +28,5 @@ select
     trim(g.postalcode) as postal_code
 
 from raw_resellers r
-left join raw_geography g 
+left join raw_geography g
     on r.geographykey = g.geographykey

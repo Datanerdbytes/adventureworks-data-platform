@@ -21,10 +21,10 @@ select
     product_id,
     product_name,
     model_name,
-    
+
     -- Maps missing color strings to a clean 'Universal/No Color' label for dashboard filters
     coalesce(nullif(trim(color), ''), 'Universal') as color,
-    
+
     -- Standardizes blank size strings into a readable text token
     coalesce(nullif(trim(size), ''), 'N/A') as size,
     size_unit_measure_code,

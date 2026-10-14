@@ -4,7 +4,7 @@ from contextlib import redirect_stdout, redirect_stderr
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

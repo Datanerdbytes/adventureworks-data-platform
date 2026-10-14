@@ -23,6 +23,7 @@ The project demonstrates strong foundational security practices including Supaba
 **Implementation:** Added `validate_warehouse_identifiers()` function in `my-dash-app/customer_kpis.py` (lines 13-29) that validates BigQuery project and dataset identifiers against strict regex patterns before SQL construction. All SQL-building functions in `customer_kpis.py` now call this validator at entry.
 
 **Validation Evidence:**
+
 - Project ID pattern: `^[a-z][a-z0-9-]*$` (lowercase, alphanumeric, hyphens)
 - Dataset ID pattern: `^[A-Za-z_][A-Za-z0-9_]*$` (alphanumeric, underscores)
 - Unit tests in `tests/test_customer_kpis.py` (`ValidateWarehouseIdentifiersTests`) verify:
@@ -30,19 +31,21 @@ The project demonstrates strong foundational security practices including Supaba
   - Invalid identifiers raise `ValueError` (uppercase, leading digits, special chars, empty, spaces)
   - Common SQL injection patterns blocked (semicolon, backtick, comment, UNION)
 
-**Correction to Original Finding:** The audit's evidence showed a hypothetical pattern interpolating *filter values* (segment, country) directly into SQL. Code review confirms the actual implementation **already used BigQuery parameterized queries** (`bigquery.ScalarQueryParameter`) for all filter values (year, quarter, channel, category, subcategory). The remaining risk was interpolation of *project/dataset identifiers* into backtick-quoted table references, which cannot be parameterized. This has been mitigated by the identifier validation.
+**Correction to Original Finding:** The audit's evidence showed a hypothetical pattern interpolating _filter values_ (segment, country) directly into SQL. Code review confirms the actual implementation **already used BigQuery parameterized queries** (`bigquery.ScalarQueryParameter`) for all filter values (year, quarter, channel, category, subcategory). The remaining risk was interpolation of _project/dataset identifiers_ into backtick-quoted table references, which cannot be parameterized. This has been mitigated by the identifier validation.
 
 **Status:** ✅ Complete — identifier validation + existing parameterization = defense in depth.
 
 ### VULN-02: Overly Broad `.gitignore` Pattern — **ADDRESSED**
 
 **Implementation:** Removed blanket `*.json` exclusion from `.gitignore` (previously line 5). Retained explicit ignore for `gcp-key.json` only. Added allowlist exceptions for required JSON assets:
+
 - `package.json`, `package-lock.json` (root)
 - `.env.example` (template)
 - `my-dash-app/map_data/customer_boundaries.json` (geographic asset)
 - `my-dash-app/assets/geo/world_110m.json` (geographic asset)
 
 **Validation Evidence:**
+
 - `git check-ignore` confirms secrets (`gcp-key.json`, `.env`) and generated artifacts (`logs/`, `target/`, `dbt_packages/`, `node_modules/`) remain ignored.
 - `git check-ignore` confirms ordinary JSON configuration (`package.json`, `package-lock.json`, `.env.example`) and required map assets are **not** ignored.
 - New JSON files created in repository root or subdirectories are now tracked by default (no silent exclusion).
@@ -64,6 +67,7 @@ The project demonstrates strong foundational security practices including Supaba
 **Impact:** An attacker who can manipulate filter parameters (e.g., via crafted URL parameters or manipulated `dcc.Store` state) could inject arbitrary SQL, potentially reading sensitive customer PII, exfiltrating data across workspace boundaries, or executing destructive queries against the BigQuery dataset.
 
 **Evidence:**
+
 ```python
 # Hypothetical pattern observed in customer_kpis.py
 query = f"""
@@ -202,25 +206,25 @@ WHERE segment = '{user_segment}'
 
 ### Phase 1: Critical (0-2 weeks) — **COMPLETE**
 
-| ID | Action | Effort | Status |
-|----|--------|--------|--------|
+| ID      | Action                                                                   | Effort | Status                                                                     |
+| ------- | ------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------- |
 | VULN-01 | Parameterize all SQL queries in `customer_kpis.py` and `revenue_kpis.py` | 3 days | ✅ Done — identifier validation added; filter values already parameterized |
-| VULN-02 | Replace `*.json` gitignore with explicit file rules | 1 hour | ✅ Done |
+| VULN-02 | Replace `*.json` gitignore with explicit file rules                      | 1 hour | ✅ Done                                                                    |
 
 ### Phase 2: High (2-4 weeks)
 
-| ID | Action | Effort |
-|----|--------|--------|
-| VULN-03 | Implement Flask-Limiter on all auth endpoints | 2 days |
-| VULN-04 | Pin exact dependency versions; add `pip-audit` to CI | 2 days |
+| ID      | Action                                                             | Effort |
+| ------- | ------------------------------------------------------------------ | ------ |
+| VULN-03 | Implement Flask-Limiter on all auth endpoints                      | 2 days |
+| VULN-04 | Pin exact dependency versions; add `pip-audit` to CI               | 2 days |
 | VULN-05 | Add environment guards and confirmation flags to `elt_pipeline.py` | 3 days |
 
 ### Phase 3: Medium (4-8 weeks)
 
-| ID | Action | Effort |
-|----|--------|--------|
-| VULN-06 | Fix cache key parameter coverage in KPI modules | 1 day |
-| VULN-07 | Add CSRF token validation for state-changing RPCs | 2 days |
+| ID      | Action                                                  | Effort |
+| ------- | ------------------------------------------------------- | ------ |
+| VULN-06 | Fix cache key parameter coverage in KPI modules         | 1 day  |
+| VULN-07 | Add CSRF token validation for state-changing RPCs       | 2 days |
 | VULN-08 | Document `SUPABASE_DB_URL` handling; rotate credentials | 1 hour |
 
 ### Phase 4: Ongoing

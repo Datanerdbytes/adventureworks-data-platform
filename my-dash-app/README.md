@@ -104,7 +104,6 @@ Wholesale uses reseller-channel orders; demographics deduplicate Internet-channe
 customers. Growth compares both years but uses the selected year for detail and
 month-over-month metrics, including the prior December baseline when available.
 
-
 ## Executive warehouse filters and metrics
 
 `/dashboard/executive` uses four page-wide filter groups: calendar year/quarter,
@@ -132,7 +131,6 @@ options are cached for five minutes. No data query runs at import or in layouts.
 Empty selections show zero revenue/profit/orders and undefined ratios as em
 dashes. Query failures clear the old results and show an error instead of demo
 values. Reload to retry. Tests use mocks for warehouse access.
-
 
 ### Embedded preview sign-in
 
@@ -208,7 +206,6 @@ The demographic and growth marts discard customer IDs and/or customer-state/date
 grain. These non-additive metrics therefore reuse their source facts and dimensions
 rather than summing demographic segment counts or inventing missing identities.
 Queries are parameterized, cached for 60 seconds, and capped at 100 MiB billed.
-
 
 The retail region and age charts count distinct customers purchasing within the
 selected sales scope, not the cumulative acquired-profile KPI base. Region means

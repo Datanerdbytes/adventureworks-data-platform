@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app
+from app import app as app  # Initializes Dash page/callback registration.
 from growth_kpis import (
     calculate_scorecards,
     growth_scorecards_sql,

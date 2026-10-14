@@ -2,8 +2,8 @@
 
 import json
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-from urllib.parse import urlencode
+from urllib.request import Request, HTTPRedirectHandler, build_opener
+from urllib.parse import urlencode, urlsplit
 
 
 class GovernanceError(Exception):
@@ -12,11 +12,62 @@ class GovernanceError(Exception):
         self.status = status
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never forward bearer tokens or API keys to a redirected authority.
+        return None
+
+
+def urlopen(request, timeout):
+    """Keep the patchable transport boundary, with redirects disabled."""
+    _validate_service_url(request.full_url, allow_request_path=True)
+    return build_opener(_NoRedirect()).open(request, timeout=timeout)
+
+
+def _validate_service_url(url, allow_request_path=False):
+    if (
+        not isinstance(url, str)
+        or "\\" in url
+        or any(char.isspace() or ord(char) < 32 for char in url)
+    ):
+        raise GovernanceError("Invalid authentication service URL.")
+    try:
+        parsed = urlsplit(url)
+        _ = parsed.port  # Reject malformed ports before creating a request.
+    except ValueError:
+        raise GovernanceError("Invalid authentication service URL.") from None
+    local_http = parsed.scheme == "http" and parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
+    if (
+        (parsed.scheme != "https" and not local_http)
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or (not allow_request_path and parsed.path not in ("", "/"))
+        or (not allow_request_path and parsed.query)
+        or parsed.fragment
+    ):
+        raise GovernanceError("Invalid authentication service URL.")
+
+
 class SupabaseGateway:
     def __init__(self, url, public_key, token):
+        _validate_service_url(url)
         self.url, self.public_key, self.token = url.rstrip("/"), public_key, token
 
     def request(self, path, payload=None):
+        _validate_service_url(self.url)
+        if (
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or path.startswith("//")
+            or "#" in path
+            or any(char.isspace() or ord(char) < 32 for char in path)
+        ):
+            raise GovernanceError("Invalid authentication service path.")
         headers = {"apikey": self.public_key, "Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token

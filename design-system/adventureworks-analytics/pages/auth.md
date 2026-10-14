@@ -14,6 +14,7 @@
 - No marketing paragraphs or retry button on the ordinary sign-in page.
 
 Provider artwork is stored locally to avoid external image requests:
+
 - Google: https://developers.google.com/identity/branding-guidelines
   (official Google G PNG, unchanged).
 - GitHub: https://brand.github.com/foundations/logo

@@ -1,11 +1,13 @@
 # Agent Context & Rules
 
 ## 1. Project Overview
+
 - **Project Name:** Data Analytics Dashboard
 - **Core Purpose:** An interactive multi-page dashboard to visualize live data tables from Google BigQuery and provide an analytics layer pipeline monitoring console.
 - **Target Audience:** Internal business analysts, data engineers, and stakeholders.
 
 ## 2. Tech Stack & Environment
+
 - **Language:** Python 3.12 locally and in Docker; `pyproject.toml` requires Python >=3.12
 - **Python Dependencies:** Root `pyproject.toml` and `uv.lock`, managed with uv
 - **Core Framework:** Plotly Dash
@@ -19,6 +21,7 @@
 - **Code Formatters:** `black` for Python and Prettier for CSS
 
 ## 3. Architecture & File Structure
+
 - `db_connector.py` creates SQLAlchemy connection engines for PostgreSQL and BigQuery using environment configuration.
 - `elt_pipeline.py` extracts AdventureWorks tables from PostgreSQL and loads them into BigQuery.
 - `adventureworks_analytics/` contains the dbt project, with staging models, reporting marts, macros, SQL tests, and documentation.
@@ -104,6 +107,7 @@ Postgres-AdventureWorksDW/
 - `elt_pipeline.py` uses `WRITE_TRUNCATE` when loading BigQuery tables; running it replaces destination table data and requires the production confirmation described below.
 
 ## 4. General Architecture
+
 - Never use global variables to store user-specific state. Keep mutable client state in `dcc.Store` or URL parameters.
 - Use descriptive, globally unique component IDs, such as `"sales-filter-dropdown"`.
 - Load data inside callbacks, not at import time. Avoid module-level data reads or database queries; startup-loaded data will not refresh until the process restarts.
@@ -113,6 +117,7 @@ Postgres-AdventureWorksDW/
 - Use explicit BigQuery column names, logical filters, and date/time boundaries where applicable. Include a `LIMIT` during structural testing to control scan costs.
 
 ## 5. Callbacks, Data, and Performance
+
 - Do not pass massive datasets through `dcc.Store`. Use it only for lightweight state such as IDs, UI toggles, or query filters, with a maximum of 5 MB.
 - For large datasets, expensive queries, heavy computations, or API requests, use Flask-Caching and `@cache.memoize()`. Include relevant query parameters in cache keys.
 - Ensure every callback `Input`, `Output`, and `State` ID exists in the layout when the callback fires. For dynamic or multi-page layouts, set `suppress_callback_exceptions=True`.
@@ -125,6 +130,7 @@ Postgres-AdventureWorksDW/
 - Avoid blocking `time.sleep` loops in callbacks. Use `dcc.Interval` for asynchronous polling or an external task queue for long-running work.
 
 ## 6. Layout and Styling
+
 - Prefer Dash Bootstrap Components (`import dash_bootstrap_components as dbc`) for styled UI elements such as cards, badges, buttons, menus, alerts, and modals. Use their built-in properties before creating custom HTML equivalents.
 - Keep Bootstrap styling aligned with `design-system/adventureworks-analytics/MASTER.md` and relevant page overrides. Reuse the app's stylesheet setup; when Bootstrap classes are needed, ensure a Bootstrap 5-compatible stylesheet is loaded once and check for conflicts with existing dashboard styles.
 - Put core layout styles, grids, and structural overrides in CSS files under `assets/`.
@@ -133,6 +139,7 @@ Postgres-AdventureWorksDW/
 - Format Python with `black` and CSS with Prettier.
 
 ## 7. Charts and Components
+
 - Prefer `plotly.express`; use `plotly.graph_objects` when fine-grained control is needed.
 - Use Dash Bootstrap Components as the preferred styled component library. Continue using Dash Core Components for graphs, stores, routing, and controls where appropriate, Dash HTML Components for semantic structure, and Dash AgGrid for tables. Avoid introducing another UI component library when the existing stack supports the requirement.
 - Do not use `dash_table.DataTable`; use `dash.AgGrid`.
@@ -150,6 +157,7 @@ defaultColDef={"filter": True, "sortable": True}
 ```
 
 ## 8. Observability and New Pages
+
 - Do not read `analytics_layer/target/manifest.json` from dynamic layout updates or loop callbacks. Reuse cached manifest dictionaries through a `dcc.Store` where appropriate.
 - Page layout functions must return quickly with placeholders or empty grids. Do not run database queries or intensive data loaders inside them.
 - Fetch data in callbacks triggered by page or tab selection.
@@ -157,6 +165,7 @@ defaultColDef={"filter": True, "sortable": True}
 - Handle `None` and empty DataFrames without column lookup failures or `IndexError`.
 
 ## 9. Avoid Hallucinations and Unsafe Patterns
+
 - Use `app.run`; never use `app.run_server`.
 - Do not use `app.validation_layout`. For dynamic layouts, use `suppress_callback_exceptions=True` during app initialization.
 - Import callback primitives using modern Dash syntax, for example: `from dash import Input, Output, State, callback, clientside_callback, no_update, ALL, MATCH`.
@@ -168,6 +177,7 @@ defaultColDef={"filter": True, "sortable": True}
 - When adding or adapting the five sales filters (calendar year, quarter, sales channel, product category, and dependent product subcategory) in Dash reports, read and apply [dash-sales-filters](/Users/roelsomido/.codex/skills/dash-sales-filters/SKILL.md). This globally installed skill covers shared filter behavior, query consistency, browser state, and styling; adapt its field mappings to the target report.
 
 ## 10. Production Safety
+
 - The workspace is connected to the production Google Cloud environment `quantum-echo-data-eng-prod`.
 - Never run destructive commands such as `bq rm`, `dbt clean`, or commands that drop production datasets without explicit, multi-turn user confirmation.
 

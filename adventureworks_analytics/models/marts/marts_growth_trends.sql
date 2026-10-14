@@ -14,14 +14,14 @@ daily_channel_aggregates as (
         d.month_name,
         d.is_weekend_flag,
         s.sales_channel,
-        
+
         -- Financial Volume Rollups
         sum(s.sales_amount) as daily_gross_revenue,
         sum(s.order_quantity) as daily_units_sold,
         count(distinct s.sales_order_number) as daily_orders_count
 
     from sales_core s
-    inner join date_dimension d 
+    inner join date_dimension d
         on s.order_date_key = d.date_key
     group by 1, 2, 3, 4, 5, 6
 )
@@ -32,9 +32,9 @@ select
     month_number,
     month_name,
     sales_channel,
-    
+
     -- ⏱️ Temporal Segmentations
-    case 
+    case
         when is_weekend_flag is true then 'Weekend'
         else 'Weekday'
     end as day_type_segment,

@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from test_customer_kpis import app, CATALOG, ALL
+from test_customer_kpis import CATALOG, ALL
 from customer_map import revenue_map, OVERVIEW
 from pages.customers import populate_region
 from customer_kpis import customer_map_sql

@@ -172,7 +172,6 @@ endpoints require exact Origin matching. Protected failures return 401, 403, or
 503; browser navigation to unauthorized pages redirects to sign-in or access
 pending. Authenticated `/` navigation redirects to `/dashboard`.
 
-
 ## Verified access-request queue
 
 `workspace_access_requests` separates Pending/Approved/Rejected/Cancelled requests

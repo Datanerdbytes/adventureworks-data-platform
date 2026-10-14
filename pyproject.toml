@@ -26,6 +26,32 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "bandit==1.9.4",
     "black==26.3.1",
+    "detect-secrets==1.5.0",
+    "mypy==2.4.0",
     "pip-audit==2.10.1",
+    "pre-commit==4.7.0",
+    "pre-commit-hooks==6.0.0",
+    "ruff==0.17.0",
 ]
+
+[tool.black]
+target-version = ["py312"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = [".kilo", "adventureworks_analytics/target", "adventureworks_analytics/dbt_packages"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+follow_imports = "skip"
+explicit_package_bases = true
+mypy_path = ["my-dash-app", "."]
+check_untyped_defs = true
+warn_unused_ignores = true

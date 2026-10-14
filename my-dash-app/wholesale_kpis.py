@@ -1,10 +1,11 @@
 """Filter-aware wholesale account and revenue metrics."""
 
 from google.cloud import bigquery
-from revenue_kpis import cache, filter_parameters
+from revenue_kpis import cache, filter_parameters, validate_warehouse_identifiers
 
 
 def active_accounts_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT COUNT(DISTINCT s.reseller_key) AS active_accounts
     FROM `{project}.{dataset}.fct_sales` s
@@ -18,7 +19,7 @@ def active_accounts_sql(project, dataset):
       AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
       AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -31,6 +32,7 @@ def load_active_accounts(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             active_accounts_sql(project, dataset),
@@ -51,6 +53,7 @@ def load_active_accounts(
 
 
 def reseller_revenue_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT COALESCE(SUM(gross_revenue_amount), 0) AS total_reseller_revenue,
            COALESCE(SUM(total_units_sold), 0) AS total_wholesale_units_sold,
@@ -63,7 +66,7 @@ def reseller_revenue_sql(project, dataset):
       AND (@category IS NULL OR product_category = @category)
       AND (@subcategory IS NULL OR product_subcategory = @subcategory)
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -76,6 +79,7 @@ def load_reseller_revenue(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             reseller_revenue_sql(project, dataset),
@@ -96,6 +100,7 @@ def load_reseller_revenue(
 
 
 def wholesale_orders_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT COUNT(DISTINCT s.sales_order_number) AS wholesale_orders
     FROM `{project}.{dataset}.fct_sales` s
@@ -109,7 +114,7 @@ def wholesale_orders_sql(project, dataset):
       AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
       AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
     LIMIT 1
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -122,6 +127,7 @@ def load_wholesale_orders(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             wholesale_orders_sql(project, dataset),
@@ -146,6 +152,7 @@ def load_wholesale_comparison(
     project, dataset, year, quarter, channel, category, subcategory
 ):
     """One cached prior-period snapshot shared by all five YoY badges."""
+    validate_warehouse_identifiers(project, dataset)
     from decimal import Decimal
 
     params = (project, dataset, year, quarter, channel, category, subcategory)
@@ -162,6 +169,7 @@ def load_wholesale_comparison(
 
 
 def top_resellers_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT r.reseller_name, SUM(s.sales_amount) AS revenue
     FROM `{project}.{dataset}.fct_sales` s
@@ -177,7 +185,7 @@ def top_resellers_sql(project, dataset):
     GROUP BY r.reseller_name
     ORDER BY revenue DESC, r.reseller_name ASC
     LIMIT 10
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -190,6 +198,7 @@ def load_top_resellers(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             top_resellers_sql(project, dataset),
@@ -209,6 +218,7 @@ def load_top_resellers(
 
 
 def reseller_scatter_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT r.reseller_key, r.reseller_name, r.annual_revenue,
            SUM(s.order_quantity) AS total_units_sold
@@ -226,7 +236,7 @@ def reseller_scatter_sql(project, dataset):
     GROUP BY r.reseller_key, r.reseller_name, r.annual_revenue
     ORDER BY r.reseller_key
     LIMIT 1001
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -239,6 +249,7 @@ def load_reseller_scatter(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             reseller_scatter_sql(project, dataset),
@@ -258,6 +269,7 @@ def load_reseller_scatter(
 
 
 def wholesale_product_mix_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     SELECT product_category, SUM(gross_revenue_amount) AS revenue
     FROM `{project}.{dataset}.revenue_sales_performance`
@@ -270,7 +282,7 @@ def wholesale_product_mix_sql(project, dataset):
     GROUP BY product_category
     ORDER BY product_category
     LIMIT 1001
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -283,6 +295,7 @@ def load_wholesale_product_mix(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             wholesale_product_mix_sql(project, dataset),
@@ -302,6 +315,8 @@ def load_wholesale_product_mix(
 
 
 def wholesale_operations_sql(project, dataset, staging_dataset):
+    validate_warehouse_identifiers(project, dataset)
+    validate_warehouse_identifiers(project, staging_dataset)
     return f"""
     WITH invoices AS (
       SELECT s.reseller_key, s.sales_order_number,
@@ -330,7 +345,7 @@ def wholesale_operations_sql(project, dataset, staging_dataset):
              r.state_province_name, r.country_region_name
     ORDER BY average_shipping_lead_days DESC, r.reseller_name, r.reseller_key
     LIMIT 1001
-    """
+    """  # nosec B608
 
 
 @cache.memoize(timeout=60)
@@ -344,6 +359,8 @@ def load_wholesale_operations(
     category=None,
     subcategory=None,
 ):
+    validate_warehouse_identifiers(project, dataset)
+    validate_warehouse_identifiers(project, staging_dataset)
     with bigquery.Client(project=project) as client:
         job = client.query(
             wholesale_operations_sql(project, dataset, staging_dataset),

@@ -28,11 +28,11 @@ select
     -- Preserve fixed-point precision for downstream rollups; format at display time.
     sum(s.sales_amount) as gross_revenue_amount,
     sum(s.total_product_cost) as total_product_cost,
-    
+
     -- Calculated Financial Performance Margins
     sum(s.sales_amount) - sum(s.total_product_cost) as gross_profit_amount,
     round(
-        (sum(s.sales_amount) - sum(s.total_product_cost)) / nullif(sum(s.sales_amount), 0) * 100, 
+        (sum(s.sales_amount) - sum(s.total_product_cost)) / nullif(sum(s.sales_amount), 0) * 100,
         2
     ) as gross_profit_margin_percentage,
 
@@ -41,7 +41,7 @@ select
     round(sum(s.sales_amount) / nullif(count(distinct s.sales_order_number), 0), 2) as product_revenue_per_purchasing_order
 
 from sales_core s
-inner join date_dimension d 
+inner join date_dimension d
     on s.order_date_key = d.date_key
 
 group by 1, 2, 3, 4, 5, 6, 7

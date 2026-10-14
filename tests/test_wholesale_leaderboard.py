@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app
-from pages.wholesale import populate_leaderboard, leaderboard_figure
+from app import app as app  # Initializes Dash page/callback registration.
+from pages.wholesale import populate_leaderboard
 from wholesale_kpis import top_resellers_sql
 from test_wholesale_kpis import CATALOG, ALL
 

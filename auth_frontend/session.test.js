@@ -99,10 +99,15 @@ test("throttled auth requests expose the server message without replay", async (
       return {
         ok: false,
         status: 429,
-        json: async () => ({ error: "Too many requests. Please wait before trying again." }),
+        json: async () => ({
+          error: "Too many requests. Please wait before trying again.",
+        }),
       };
     }),
-    { status: 429, message: "Too many requests. Please wait before trying again." },
+    {
+      status: 429,
+      message: "Too many requests. Please wait before trying again.",
+    },
   );
   assert.equal(requests, 1);
 });

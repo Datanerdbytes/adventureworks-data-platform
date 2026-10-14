@@ -1,0 +1,115 @@
+minimum_pre_commit_version: "4.7.0"
+default_stages: [pre-commit]
+# Never descend into generated environments, dbt outputs, or agent worktrees.
+exclude: '^(?!.*(?:^|/)(?:gcp-key\.json|\.env(?:\..*)?)$).*(?:^|/)(?:\.venv|node_modules|__pycache__|target|dbt_packages|dbt_modules|logs|\.kilo|\.git)/'
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff lint
+        entry: uv run --locked ruff check
+        language: system
+        types: [python]
+      - id: black
+        name: Black formatting
+        entry: uv run --locked black --check
+        language: system
+        types: [python]
+      - id: prettier
+        name: Prettier formatting
+        entry: npm run format:check --
+        language: system
+        types_or: [css, javascript, json, yaml, markdown]
+        exclude: '^(my-dash-app/assets/auth\.js|my-dash-app/map_data/customer_boundaries\.json|my-dash-app/assets/geo/world_110m\.json|package-lock\.json)$'
+      - id: mypy
+        name: mypy type checking
+        entry: uv run --locked mypy
+        language: system
+        types: [python]
+        exclude: "^tests/"
+        require_serial: true
+      - id: bandit
+        name: Bandit security scan (medium/high severity and confidence)
+        entry: uv run --locked bandit -ll -ii
+        language: system
+        types: [python]
+        exclude: '^(tests/|scripts/test_governance_db\.py$)'
+      - id: detect-secrets
+        name: Secrets scan
+        entry: uv run --locked detect-secrets-hook --no-verify --baseline .secrets.baseline
+        language: system
+        types: [text]
+        exclude: '^\.secrets\.baseline$'
+      - id: forbid-credentials
+        name: Block credential files
+        entry: Credential files must never be committed. Use .env.example for placeholders.
+        language: fail
+        files: '(^|/)(gcp-key\.json|\.env(?:\..*)?)$'
+        exclude: '(^|/)\.env\.example$'
+      - id: dependency-audit
+        name: Audit locked dependencies
+        entry: uv run --locked python scripts/pre_commit_checks.py dependency-audit
+        language: system
+        files: '^(pyproject\.toml|uv\.lock)$'
+        pass_filenames: false
+      - id: check-ast
+        name: Python syntax
+        entry: uv run --locked check-ast
+        language: system
+        types: [python]
+      - id: javascript-syntax
+        name: JavaScript syntax
+        entry: uv run --locked python scripts/pre_commit_checks.py javascript-syntax
+        language: system
+        files: '\.(js|mjs|cjs)$'
+      - id: check-yaml
+        name: YAML syntax
+        entry: uv run --locked check-yaml
+        language: system
+        types: [yaml]
+      - id: check-json
+        name: JSON syntax
+        entry: uv run --locked check-json
+        language: system
+        types: [json]
+      - id: check-toml
+        name: TOML syntax
+        entry: uv run --locked check-toml
+        language: system
+        types: [toml]
+      - id: check-merge-conflict
+        name: Merge conflict markers
+        entry: uv run --locked check-merge-conflict
+        language: system
+        types: [text]
+      - id: check-added-large-files
+        name: Unexpected large files
+        entry: uv run --locked check-added-large-files --maxkb=1024
+        language: system
+        # Existing geographic assets and generated bundle are intentional.
+        exclude: '^my-dash-app/(map_data/customer_boundaries\.json|assets/geo/world_110m\.json|assets/auth\.js)$'
+      - id: trailing-whitespace
+        name: Trailing whitespace
+        entry: uv run --locked trailing-whitespace-fixer --markdown-linebreak-ext=md
+        language: system
+        types: [text]
+        exclude: '^my-dash-app/(assets/auth\.js|map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
+      - id: end-of-file-fixer
+        name: Final newline
+        entry: uv run --locked end-of-file-fixer
+        language: system
+        types: [text]
+        exclude: '^my-dash-app/(assets/auth\.js|map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
+      - id: python-tests
+        name: Offline Python tests
+        entry: uv run --locked python scripts/pre_commit_checks.py python-tests
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: auth-tests
+        name: Auth frontend tests
+        entry: uv run --locked python scripts/pre_commit_checks.py auth-tests
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -296,7 +296,7 @@ def run_elt_migration(
             print(f"Processing table: {table_name}...")
 
             with pg_engine.connect() as pg_conn:
-                query = sa.text(f"SELECT * FROM public.{table_name}")
+                query = sa.text(f"SELECT * FROM public.{table_name}")  # nosec B608
                 query_result = pg_conn.execute(query).fetchall()
                 records = [dict(row._mapping) for row in query_result]
 

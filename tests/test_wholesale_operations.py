@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app
+from app import app as app  # Initializes Dash page/callback registration.
 from pages.wholesale import populate_operations, operations_columns
 from wholesale_kpis import wholesale_operations_sql
 from test_wholesale_kpis import CATALOG, ALL
