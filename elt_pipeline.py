@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -44,7 +45,7 @@ class PipelineConfirmationError(Exception):
 def _load_env():
     """Load environment variables from .env file."""
     env_path = Path(__file__).resolve().parent / ".env"
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=env_path, override=False)
 
 
 def _is_interactive():
@@ -53,6 +54,50 @@ def _is_interactive():
         return sys.stdin.isatty()
     except Exception:
         return False
+
+
+def _validate_project(value):
+    # Use canonical project IDs, not numeric aliases, for production detection.
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[a-z][a-z0-9-]{4,28}[a-z0-9]", value
+    ):
+        raise PipelineConfigurationError("Invalid destination project ID.")
+
+
+def _validate_dataset(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,1024}", value):
+        raise PipelineConfigurationError("Invalid destination dataset ID.")
+
+
+def _validate_options(dry_run, confirm_production, destination, interactive):
+    if type(dry_run) is not bool:
+        raise PipelineConfigurationError("dry_run must be a boolean.")
+    if type(confirm_production) is not bool:
+        raise PipelineConfirmationError("confirm_production must be a boolean.")
+    if interactive is not None and type(interactive) is not bool:
+        raise PipelineConfigurationError("interactive must be a boolean or None.")
+    if destination is not None:
+        if not isinstance(destination, str) or destination.count(".") != 1:
+            raise PipelineConfirmationError(
+                "Destination confirmation must be project.dataset."
+            )
+        project, dataset = destination.split(".")
+        try:
+            _validate_project(project)
+            _validate_dataset(dataset)
+        except PipelineConfigurationError:
+            raise PipelineConfirmationError(
+                "Invalid destination confirmation."
+            ) from None
+
+
+def _safe_error_category(error):
+    # Select fixed labels rather than printing exception messages, SQL, or URLs.
+    if isinstance(error, (ConnectionError, sa.exc.DBAPIError)):
+        return "database connection or query failure"
+    if isinstance(error, TimeoutError):
+        return "operation timed out"
+    return "operation failed"
 
 
 def resolve_destination_config():
@@ -77,14 +122,20 @@ def resolve_destination_config():
             "GBQ_DATASET_ID is not set. Cannot determine destination dataset."
         )
 
+    _validate_project(project_id)
     if "." in dataset_id:
-        qualified_project, dataset_name = dataset_id.split(".", 1)
+        if dataset_id.count(".") != 1:
+            raise PipelineConfigurationError(
+                "GBQ_DATASET_ID must be dataset or project.dataset."
+            )
+        qualified_project, dataset_id = dataset_id.split(".")
+        _validate_project(qualified_project)
         if qualified_project != project_id:
             raise PipelineConfigurationError(
                 f"GBQ_DATASET_ID project prefix '{qualified_project}' conflicts with "
-                f"GBQ_PROJECT_ID '{project_id}'. Refusing to use contradictory configuration."
+                f"GBQ_PROJECT_ID '{project_id}'. Refusing contradictory configuration."
             )
-        dataset_id = dataset_name
+    _validate_dataset(dataset_id)
 
     effective_destination = f"{project_id}.{dataset_id}"
     return project_id, dataset_id, effective_destination
@@ -118,10 +169,19 @@ def validate_confirmation(
     Raises:
         PipelineConfirmationError: if confirmation requirements are not met.
     """
+    _validate_options(False, confirm_production, destination, interactive)
+    _validate_project(project_id)
+    _validate_dataset(dataset_id)
+    if effective_destination != f"{project_id}.{dataset_id}":
+        raise PipelineConfigurationError("Inconsistent effective destination.")
+    if destination is not None and destination != effective_destination:
+        raise PipelineConfirmationError(
+            "Destination confirmation mismatch. Refusing to proceed."
+        )
     if not is_production_destination(project_id):
         return
 
-    if not confirm_production:
+    if confirm_production is not True:
         raise PipelineConfirmationError(
             "Production destination detected. "
             "--confirm-production is required to proceed with WRITE_TRUNCATE."
@@ -131,13 +191,6 @@ def validate_confirmation(
         raise PipelineConfirmationError(
             "Production destination detected. "
             "--destination <exact_destination> is required to confirm the exact target."
-        )
-
-    if destination != effective_destination:
-        raise PipelineConfirmationError(
-            f"Destination confirmation mismatch. "
-            f"Expected '{effective_destination}', got '{destination}'. "
-            "Refusing to proceed."
         )
 
 
@@ -194,6 +247,7 @@ def run_elt_migration(
         PipelineConfigurationError: on missing or contradictory configuration.
         PipelineConfirmationError: if production confirmation requirements are not met.
     """
+    _validate_options(dry_run, confirm_production, destination, interactive)
     _load_env()
 
     if interactive is None:
@@ -273,15 +327,15 @@ def run_elt_migration(
                 print(f"  Skipping {table_name}: Table is empty.")
 
         except Exception as e:
-            print(f"  Error migrating table {table_name}: {str(e)}")
-            failed_tables.append((table_name, str(e)))
+            print(f"  Error migrating table {table_name}: {_safe_error_category(e)}")
+            failed_tables.append(table_name)
             continue
 
     print(
         f"Migration Summary: {len(successful_tables)}/{len(TABLES_TO_MIGRATE)} tables successfully migrated."
     )
     if failed_tables:
-        print(f"Failed tables: {[t[0] for t in failed_tables]}")
+        print(f"Failed tables: {failed_tables}")
         raise SystemExit(1)
 
 
@@ -329,7 +383,7 @@ def main():
     except SystemExit:
         raise
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"ERROR: {_safe_error_category(e)}", file=sys.stderr)
         sys.exit(1)
 
 
