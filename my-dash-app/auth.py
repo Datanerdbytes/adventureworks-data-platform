@@ -10,6 +10,7 @@ from urllib.parse import urlencode, urlparse
 from dotenv import load_dotenv
 from flask import Response, g, jsonify, redirect, render_template, request, session
 from governance import GovernanceError, SupabaseGateway
+from rate_limiter import init_limiter, enforce_user_limit
 
 COOKIE = "aw_access"
 AUTH_PAGES = {
@@ -115,6 +116,8 @@ def install_auth(server):
     )
     server.extensions["supabase_gateway_factory"] = SupabaseGateway
 
+    limiter = init_limiter(server)
+
     def configuration():
         error = auth_configuration_error(server.config)
         if error:
@@ -134,6 +137,7 @@ def install_auth(server):
         user = client.user()
         g.auth_user, g.governance = user, client
         g.workspace_username = user["email"]
+        enforce_user_limit(limiter, user)
         return client, user
 
     def load_context(client):
@@ -171,6 +175,7 @@ def install_auth(server):
         return jsonify(error=str(error)), error.status
 
     @server.route("/auth/config", methods=["GET"])
+    @limiter.limit("30 per minute; 100 per hour")
     def auth_config():
         try:
             configuration()
@@ -183,6 +188,7 @@ def install_auth(server):
             return failure(error)
 
     @server.get("/auth/registration")
+    @limiter.limit("20 per minute; 60 per hour")
     def registration_workspace():
         try:
             configuration()
@@ -211,6 +217,8 @@ def install_auth(server):
             return failure(error)
 
     @server.route("/auth/session", methods=["POST", "DELETE"])
+    @limiter.limit("30 per minute; 300 per hour", methods=["POST"], per_method=True)
+    @limiter.limit("120 per minute; 600 per hour", methods=["DELETE"], per_method=True)
     def auth_session():
         try:
             configuration()
@@ -274,6 +282,7 @@ def install_auth(server):
             return failure(error)
 
     @server.get("/auth/status")
+    @limiter.limit("120 per minute; 600 per hour")
     def auth_status():
         try:
             client, user = load_identity()
@@ -291,6 +300,7 @@ def install_auth(server):
             return failure(error)
 
     @server.post("/auth/workspace")
+    @limiter.limit("30 per minute; 100 per hour")
     def select_workspace():
         try:
             origin_required()
@@ -314,11 +324,15 @@ def install_auth(server):
             next=safe_next(request.args.get("next")),
         )
 
+    @limiter.limit("20 per minute; 60 per hour")
+    def auth_page_limited():
+        return auth_page()
+
     for path in AUTH_PAGES:
         server.add_url_rule(
             path,
             endpoint="auth_page_" + AUTH_PAGES[path],
-            view_func=auth_page,
+            view_func=auth_page_limited,
             methods=["GET"],
         )
 
