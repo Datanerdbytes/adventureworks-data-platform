@@ -2,10 +2,6 @@
 # 🔐 SECRETS & CREDENTIALS (CRITICAL)
 # ==============================================================================
 gcp-key.json
-*.json
-# Public geographic assets required by the customer revenue map.
-!/my-dash-app/map_data/customer_boundaries.json
-!/my-dash-app/assets/geo/world_110m.json
 .env
 
 # ==============================================================================
@@ -35,8 +31,12 @@ dbt_modules/
 Thumbs.db
 .vscode/
 
-# Authentication frontend manifests and portable configuration.
-!/package.json
-!/package-lock.json
+# ==============================================================================
+# 🌐 NODE / FRONTEND
+# ==============================================================================
 node_modules/
+
+# ==============================================================================
+# 🧪 LOCAL ENVIRONMENT TEMPLATES
+# ==============================================================================
 !.env.example
