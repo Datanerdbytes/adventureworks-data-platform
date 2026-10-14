@@ -5,11 +5,30 @@ mart supplies calendar/channel semantics. Neither retains customer IDs or
 customer-state/month grain, so compute non-additive KPIs from their source facts.
 """
 
+import re
+
 from google.cloud import bigquery
 from revenue_kpis import cache, filter_parameters
 
 
+def validate_warehouse_identifiers(project, dataset):
+    """Validate BigQuery project and dataset identifiers to prevent SQL injection.
+
+    Args:
+        project: GCP project ID (lowercase, alphanumeric, hyphens)
+        dataset: BigQuery dataset ID (alphanumeric, underscores)
+
+    Raises:
+        ValueError: If identifiers don't match expected patterns.
+    """
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", project) or not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]*", dataset
+    ):
+        raise ValueError("Invalid analytics project or dataset configuration")
+
+
 def customer_cohort_ctes(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     WITH history AS (
       SELECT s.customer_key, s.sales_channel, s.sales_order_number,
@@ -62,6 +81,7 @@ def customer_cohort_ctes(project, dataset):
 
 
 def customer_scorecards_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return customer_cohort_ctes(project, dataset) + f""", last_orders AS (
       SELECT c.customer_key, COALESCE(MAX(h.order_date), c.acquired_on) AS last_order
       FROM cohort c CROSS JOIN cutoff LEFT JOIN history h ON c.customer_key = h.customer_key
@@ -131,6 +151,7 @@ def load_customer_scorecards(
 
 
 def customer_demographics_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return f"""
     WITH dates AS (
       SELECT MAX(d.calendar_date) AS as_of
@@ -201,6 +222,7 @@ def load_customer_demographics(
 
 
 def customer_map_sql(project, dataset, use_mart=False):
+    validate_warehouse_identifiers(project, dataset)
     if use_mart:
         return f"""SELECT territory_group, territory_country AS country,
           customer_state_province AS state, SUM(gross_revenue_amount) AS revenue
@@ -268,6 +290,7 @@ def load_customer_map(
 
 
 def customer_lifecycle_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     return customer_cohort_ctes(project, dataset) + """,
     activity AS (
       SELECT c.customer_key, cutoff.as_of,
@@ -330,6 +353,7 @@ DEMOGRAPHIC_DIMENSIONS = {
 
 
 def customer_segment_revenue_sql(project, dataset, dimension):
+    validate_warehouse_identifiers(project, dataset)
     # Only server-owned expressions may enter SQL; never interpolate a UI value.
     expression = DEMOGRAPHIC_DIMENSIONS[dimension]
     return f"""SELECT {expression} AS segment, SUM(s.sales_amount) AS revenue
@@ -379,6 +403,7 @@ def load_customer_segment_revenue(
 
 
 def customer_ledger_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
     income = DEMOGRAPHIC_DIMENSIONS["income"]
     return customer_cohort_ctes(project, dataset) + f""",
     country_groups AS (

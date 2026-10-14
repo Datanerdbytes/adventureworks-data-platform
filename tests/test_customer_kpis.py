@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
-from customer_kpis import customer_scorecards_sql
+from customer_kpis import customer_scorecards_sql, validate_warehouse_identifiers
 from pages.customers import populate_scorecards, render_scorecards
 from test_wholesale_kpis import ALL, CATALOG
 from dash.exceptions import PreventUpdate
@@ -166,3 +166,66 @@ class CustomerKpiTests(unittest.TestCase):
             self.assertIn("Unable to load", result[-1])
             self.assertNotIn("private", str(result))
         self.assertIn("Waiting", populate_scorecards(None, *([ALL] * 5))[-1])
+
+
+class ValidateWarehouseIdentifiersTests(unittest.TestCase):
+    """Tests for validate_warehouse_identifiers SQL injection prevention."""
+
+    def test_valid_identifiers_pass(self):
+        """Valid project and dataset identifiers should pass validation."""
+        validate_warehouse_identifiers("my-project", "my_dataset")
+        validate_warehouse_identifiers(
+            "quantum-echo-data-eng-prod", "gold_adventureworks"
+        )
+        validate_warehouse_identifiers("project123", "dataset_123")
+        validate_warehouse_identifiers("a", "b")
+
+    def test_invalid_project_raises(self):
+        """Invalid project identifiers should raise ValueError."""
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("My-Project", "dataset")  # uppercase
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("1project", "dataset")  # starts with digit
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project!", "dataset")  # special char
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("", "dataset")  # empty
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project with spaces", "dataset")
+
+    def test_invalid_dataset_raises(self):
+        """Invalid dataset identifiers should raise ValueError."""
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers(
+                "project", "My-Dataset"
+            )  # hyphen not allowed
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "1dataset")  # starts with digit
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "dataset!")  # special char
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "")  # empty
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "dataset with spaces")
+
+    def test_sql_injection_attempts_blocked(self):
+        """Common SQL injection patterns should be blocked."""
+        # Semicolon injection
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project; DROP TABLE", "dataset")
+        # Backtick injection
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project`", "dataset")
+        # Comment injection
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project --", "dataset")
+        # Union injection attempt
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project UNION SELECT", "dataset")
+        # Dataset injection attempts
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "dataset; DROP TABLE")
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "dataset`")
+        with self.assertRaises(ValueError):
+            validate_warehouse_identifiers("project", "dataset --")
