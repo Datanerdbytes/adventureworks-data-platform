@@ -79,11 +79,35 @@ class BootstrapTLSVerificationTests(unittest.TestCase):
             )
         connect.assert_called_once_with(
             "postgresql://db.invalid/app?sslmode=disable",
+            host="db.invalid",
             connect_timeout=8,
             sslmode="verify-full",
             gssencmode="disable",
             sslrootcert="/trusted/ca.crt",
         )
+
+    def test_validated_host_is_pinned_over_service_configuration(self):
+        connection = SimpleNamespace(info=SimpleNamespace(ssl_in_use=True))
+        for url in ("service=fixture dbname=app", "dbname=app"):
+            with (
+                self.subTest(url=url),
+                patch.dict(
+                    bootstrap_cli.os.environ,
+                    {"PGHOST": "db.invalid", "PGSERVICE": "fixture"},
+                    clear=True,
+                ),
+                patch.object(
+                    bootstrap_cli.psycopg2, "connect", return_value=connection
+                ) as connect,
+            ):
+                bootstrap_cli.connect_secure_database(url)
+                connect.assert_called_once_with(
+                    url,
+                    host="db.invalid",
+                    connect_timeout=8,
+                    sslmode="verify-full",
+                    gssencmode="disable",
+                )
 
     def test_unix_or_missing_host_rejected_before_connect(self):
         for url in (

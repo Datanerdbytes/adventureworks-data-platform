@@ -20,7 +20,12 @@ def connect_secure_database(url):
         raise BootstrapValidationError(
             "Database connection requires an explicit TCP host."
         )
-    options = {"connect_timeout": 8, "sslmode": "verify-full", "gssencmode": "disable"}
+    options = {
+        "host": host,
+        "connect_timeout": 8,
+        "sslmode": "verify-full",
+        "gssencmode": "disable",
+    }
     root_certificate = os.environ.get("SUPABASE_DB_SSLROOTCERT")
     if root_certificate:
         options["sslrootcert"] = root_certificate
