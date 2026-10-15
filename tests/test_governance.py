@@ -163,17 +163,6 @@ class GovernanceTests(unittest.TestCase):
                 self.assertFalse(workspace_admin.toggle_details_editor(1, 1))
             g.governance.rpc.assert_not_called()
 
-    def test_admin_member_defaults_preserve_existing_role(self):
-        with app.server.test_request_context():
-            g.workspace = WORKSPACE
-            g.governance = Mock()
-            g.governance.rpc.return_value = {
-                "members": [{"user_id": "target", "role": "owner", "active": True}]
-            }
-            self.assertEqual(
-                workspace_admin.selected_member("target", 0), ("owner", "active")
-            )
-
     def test_request_row_decisions_require_admin_and_validate_roles(self):
         with app.server.test_request_context():
             g.workspace = WORKSPACE
@@ -213,7 +202,7 @@ class GovernanceTests(unittest.TestCase):
             workspace_admin.review_request_row(event)
             g.governance.rpc.assert_not_called()
 
-    def test_administration_renders_with_workspace_registration_link(self):
+    def test_administration_renders_with_workspace_registration_qr(self):
         with app.server.test_request_context():
             g.workspace = WORKSPACE
             g.workspace_context = {"platform_admin": True}
@@ -227,8 +216,14 @@ class GovernanceTests(unittest.TestCase):
                 "registration_code": "a" * 48,
             }
             rendered = str(workspace_admin.populate("/workspace/admin", 0))
-            self.assertIn("workspace-admin-registration-link", rendered)
-            self.assertIn("readonly=True", rendered)
+            self.assertIn("data:image/svg+xml", rendered)
+            self.assertIn("workspace-admin-registration-copy", rendered)
+            self.assertIn("/signup?workspace=" + "a" * 48, rendered)
+            self.assertNotIn("workspace-admin-registration-link", rendered)
+            self.assertLess(
+                rendered.index("Workspace Registration"),
+                rendered.index("CURRENT WORKSPACE"),
+            )
             self.assertIn("Awaiting Approval", rendered)
             self.assertIn("WorkspaceRequestDecision", rendered)
             self.assertIn("WorkspaceRequestRole", rendered)

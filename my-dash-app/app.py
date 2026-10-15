@@ -117,18 +117,10 @@ def serve_layout():
                     ),
                     html.Div(
                         [
-                            html.Small("WORKSPACE", className="eyebrow nav-label"),
                             html.Div(
                                 [
-                                    html.Span("A", className="project-icon"),
-                                    html.Strong(
-                                        workspace["name"] if workspace else "Workspace",
-                                        className="workspace-name nav-label",
-                                        title=(
-                                            workspace["name"]
-                                            if workspace
-                                            else "Workspace"
-                                        ),
+                                    html.Small(
+                                        "WORKSPACE", className="eyebrow nav-label"
                                     ),
                                     html.Button(
                                         html.Img(
@@ -143,6 +135,21 @@ def serve_layout():
                                             "aria-controls": "app-sidebar",
                                             "aria-expanded": "true",
                                         },
+                                    ),
+                                ],
+                                className="workspace-heading",
+                            ),
+                            html.Div(
+                                [
+                                    html.Span("A", className="project-icon"),
+                                    html.Strong(
+                                        workspace["name"] if workspace else "Workspace",
+                                        className="workspace-name nav-label",
+                                        title=(
+                                            workspace["name"]
+                                            if workspace
+                                            else "Workspace"
+                                        ),
                                     ),
                                 ],
                                 className="workspace-card",
@@ -348,8 +355,8 @@ clientside_callback(
     const reports = {executive:'Revenue & Sales',wholesale:'Wholesale & Resellers',growth:'Growth & Seasonality',customers:'Customers & Regions'};
     const report = reports[(path || '').split('/')[2]];
     window.awSidebar?.navigate(path);
-    return [...keys.map(k => k === key && !(k === 'workspace' && path === '/workspace/admin') ? 'nav-link active' : 'nav-link'),
-      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? (path === '/workspace/admin' ? 'Workspace Administration' : 'Workspace Overview') : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
+    return [...keys.map(k => k === key && !(k === 'workspace' && (path || '').startsWith('/workspace/admin')) ? 'nav-link active' : 'nav-link'),
+      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? ((path || '').startsWith('/workspace/admin') ? (path === '/workspace/admin/create' ? 'Workspace Administration / Create workspace' : (path === '/workspace/admin/members' ? 'Workspace Administration / Members' : 'Workspace Administration')) : 'Workspace Overview') : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
 }""",
     *[
         Output(f"nav-{key}", "className")

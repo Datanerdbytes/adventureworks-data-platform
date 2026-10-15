@@ -44,6 +44,7 @@ def run_tests(container):
         sql(migration.read_text())
     sql((ROOT / "supabase/tests/access_requests.sql").read_text())
     sql((ROOT / "supabase/tests/password_lockout.sql").read_text())
+    sql((ROOT / "supabase/tests/admin_directory_activity.sql").read_text())
 
     # Separate connections exercise the row lock under simultaneous attempts.
     def failed_password(_):

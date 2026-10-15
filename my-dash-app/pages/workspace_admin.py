@@ -1,13 +1,16 @@
 """Workspace provisioning UI. Database RPCs are the permission boundary."""
 
-from datetime import datetime
+from datetime import datetime, timezone
+from urllib.parse import urlencode
+
+import segno
 
 import dash
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 from dash import Input, Output, State, callback, ctx, dcc, html
 from dash.exceptions import PreventUpdate
-from flask import abort, g, session, current_app
+from flask import abort, g, current_app
 from components import field, heading
 from governance import GovernanceError
 
@@ -28,6 +31,7 @@ def layout():
                 id="workspace-admin-status", role="status", **{"aria-live": "polite"}
             ),
             dcc.Store(id="workspace-admin-page-offset", data=0),
+            dcc.Store(id="workspace-admin-activity-offset", data=0),
             dcc.Loading(html.Div(id="workspace-admin-content"), type="circle"),
             dcc.Location(id="workspace-admin-reload", refresh=True),
         ],
@@ -66,7 +70,7 @@ def button(label, identifier, danger=False, disabled=False):
     )
 
 
-def panel(title, description, children, wide=False, extra=None):
+def panel(title, description, children, wide=False, extra=None, class_name=""):
     return dbc.Card(
         [
             html.Div(
@@ -78,42 +82,34 @@ def panel(title, description, children, wide=False, extra=None):
             ),
             *children,
         ],
-        className="admin-panel admin-wide" if wide else "admin-panel",
-    )
-
-
-def role_field(label, identifier, roles):
-    return field(
-        label,
-        dcc.Dropdown(
-            id=identifier,
-            options=[{"label": r.title(), "value": r} for r in roles],
-            value="viewer",
-            clearable=False,
-        ),
+        className=("admin-panel admin-wide" if wide else "admin-panel")
+        + " "
+        + class_name,
     )
 
 
 def activity_item(event):
-    raw_date = event["created_at"]
+    raw_date = event.get("created_at") or ""
     try:
-        date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).strftime(
-            "%d %b %Y · %H:%M %Z"
+        date = (
+            datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            .strftime("%d %b %Y · %H:%M")
         )
     except (ValueError, TypeError):
-        date = raw_date
-    actor = str(event.get("actor_id") or "System")
+        date = "Time unavailable"
     return html.Li(
         [
             html.Div(
                 [
                     html.Strong(event["action"].replace("_", " ").title()),
-                    html.Time(date, dateTime=raw_date),
+                    html.Small(event.get("actor_email") or "System", className="muted"),
                 ],
-                className="admin-event-heading",
+                className="admin-event-summary",
             ),
-            html.Small("Actor: " + actor, className="muted"),
-        ]
+            html.Time(date + " UTC", dateTime=raw_date),
+        ],
+        className="admin-activity-row",
     )
 
 
@@ -132,10 +128,6 @@ def populate(path, offset=None):
             "workspace_admin_data", p_workspace=w["id"], p_offset=offset
         )
         roles = ["viewer"] if w["role"] == "admin" else ["viewer", "admin", "owner"]
-        members = data["members"]
-        manageable = [
-            m for m in members if w["role"] != "admin" or m["role"] == "viewer"
-        ]
         approvals = data["approvals"]
         children = [
             html.Section(
@@ -322,148 +314,99 @@ def populate(path, offset=None):
         )
         code = data.get("registration_code")
         if code:
-            children.append(
-                panel(
-                    "Workspace Registration",
-                    "Share this link with people who need workspace access.",
-                    [
-                        field(
-                            "Registration Link",
-                            dbc.Input(
-                                value=current_app.config["AUTH_APP_ORIGIN"]
-                                + "/signup?workspace="
-                                + code,
-                                readonly=True,
-                                id="workspace-admin-registration-link",
-                            ),
+            registration_url = (
+                current_app.config["AUTH_APP_ORIGIN"].rstrip("/")
+                + "/signup?"
+                + urlencode({"workspace": code})
+            )
+            registration = panel(
+                "Workspace Registration",
+                "Scan to request access to this workspace.",
+                [
+                    html.Img(
+                        src=segno.make_qr(registration_url, error="m").svg_data_uri(
+                            scale=4, border=4, light="white", dark="black"
                         ),
-                        html.P(
-                            "Registration and email verification add a request to the queue; approval is still required.",
-                            className="admin-caption",
+                        alt="QR code for this workspace’s registration page",
+                        className="admin-registration-qr",
+                        width=180,
+                        height=180,
+                    ),
+                    dcc.Clipboard(
+                        content=registration_url,
+                        children=dbc.Button(
+                            "Copy registration link",
+                            color=None,
+                            className="button admin-registration-copy",
                         ),
-                    ],
-                    wide=True,
-                )
+                        copied_children=dbc.Button(
+                            "Link copied",
+                            color=None,
+                            className="button admin-registration-copy",
+                        ),
+                        title="Copy registration link",
+                        id="workspace-admin-registration-copy",
+                    ),
+                    html.P(
+                        "Email verification and workspace approval are still required.",
+                        className="admin-caption",
+                    ),
+                ],
+                class_name="admin-registration-panel",
+            )
+            children[0] = html.Div(
+                [registration, children[0]],
+                className="admin-workspace-summary admin-wide",
             )
         children.append(
             panel(
-                "Members",
-                "Update a member’s role or workspace access.",
+                "Recent governance activity",
+                "Workspace and access changes, newest first. Times shown in UTC.",
+                [dcc.Loading(html.Div(id="workspace-admin-activity"), type="circle")],
+                wide=True,
+            )
+        )
+        children.insert(
+            0,
+            html.Div(
                 [
-                    field(
-                        "Select Member",
-                        dcc.Dropdown(
-                            id="workspace-admin-member",
-                            options=[
-                                {
-                                    "label": f"{m['email']} · {m['role'].title()} · {'Active' if m['active'] else 'Revoked'}",
-                                    "value": m["user_id"],
-                                }
-                                for m in manageable
-                            ],
-                            placeholder="Choose a member",
-                        ),
+                    html.Div(
+                        [
+                            html.Small(
+                                "ACCESS & GOVERNANCE", className="admin-eyebrow"
+                            ),
+                            html.P(
+                                "Keep your workspace and its people in sync.",
+                                className="muted",
+                            ),
+                        ]
                     ),
                     html.Div(
                         [
-                            role_field(
-                                "Assigned Role", "workspace-admin-member-role", roles
+                            dcc.Link(
+                                "View members",
+                                href="/workspace/admin/members",
+                                className="button primary",
                             ),
-                            field(
-                                "Access Status",
-                                dcc.Dropdown(
-                                    id="workspace-admin-member-active",
-                                    options=[
-                                        {"label": "Active", "value": "active"},
-                                        {"label": "Revoked", "value": "revoked"},
-                                    ],
-                                    value="active",
-                                    clearable=False,
-                                ),
+                            *(
+                                [
+                                    dcc.Link(
+                                        "Create workspace",
+                                        href="/workspace/admin/create",
+                                        className="button",
+                                    )
+                                ]
+                                if g.workspace_context.get("platform_admin")
+                                else []
                             ),
                         ],
-                        className="admin-form-row",
-                    ),
-                    html.P(
-                        (
-                            "No members available in this batch."
-                            if not manageable
-                            else (
-                                "Admins can manage Viewers only."
-                                if w["role"] == "admin"
-                                else "At least one active Owner must remain."
-                            )
-                        ),
-                        className="admin-caption",
-                    ),
-                    html.Div(
-                        button("Update Member", "workspace-admin-change"),
-                        className="admin-panel-actions",
+                        className="admin-overview-actions",
                     ),
                 ],
-                wide=True,
-            )
+                className="admin-create-entry admin-wide",
+            ),
         )
-        children.append(
-            panel(
-                "Recent Governance Activity",
-                "A record of workspace and access changes.",
-                [
-                    (
-                        html.Ul(
-                            [activity_item(event) for event in data["events"]],
-                            className="admin-activity-list",
-                        )
-                        if data["events"]
-                        else html.P(
-                            "No governance activity yet.", className="admin-empty"
-                        )
-                    ),
-                ],
-                wide=True,
-            )
-        )
-        if g.workspace_context.get("platform_admin"):
-            children.append(
-                dbc.Accordion(
-                    [
-                        dbc.AccordionItem(
-                            [
-                                html.P(
-                                    "Create a separate workspace with its own membership. All workspaces share the AdventureWorks analytics dataset.",
-                                    className="muted",
-                                ),
-                                html.Div(
-                                    [
-                                        text_field(
-                                            "Workspace Name", "workspace-admin-new-name"
-                                        ),
-                                        text_field(
-                                            "Responsible Team",
-                                            "workspace-admin-new-team",
-                                        ),
-                                    ],
-                                    className="admin-form-row",
-                                ),
-                                text_field(
-                                    "Purpose", "workspace-admin-new-purpose", "", 1000
-                                ),
-                                text_field(
-                                    "Confirmed Owner Email",
-                                    "workspace-admin-new-owner",
-                                    "",
-                                    254,
-                                ),
-                                button("Create Workspace", "workspace-admin-create"),
-                            ],
-                            title="Create Workspace · Platform Administration",
-                        ),
-                    ],
-                    start_collapsed=True,
-                    className="admin-provisioning admin-wide",
-                )
-            )
-        count = max(data["member_count"], data["approval_count"])
+        count = data["approval_count"]
         if count > 50 or offset:
             children.append(
                 html.Nav(
@@ -487,7 +430,7 @@ def populate(path, offset=None):
                         ),
                     ],
                     className="admin-pagination admin-wide",
-                    **{"aria-label": "Member and approval pages"},
+                    **{"aria-label": "Approval request pages"},
                 )
             )
         return html.Div(children, className="workspace-admin-grid")
@@ -544,22 +487,11 @@ def search_access_requests(value):
     return result
 
 
-ACTION_INPUTS = [
-    "save",
-    "create",
-    "change",
-]
+ACTION_INPUTS = ["save"]
 STATE_FIELDS = [
     "name",
     "team",
     "purpose",
-    "new-name",
-    "new-team",
-    "new-purpose",
-    "new-owner",
-    "member",
-    "member-role",
-    "member-active",
 ]
 
 
@@ -583,37 +515,13 @@ def mutate(*args):
     try:
         w = require_admin()
         action = ctx.triggered_id.removeprefix("workspace-admin-")
-        if action == "create":
-            if not g.workspace_context.get("platform_admin"):
-                raise GovernanceError("Platform administrator required.", 403)
-            new_id = g.governance.rpc(
-                "create_workspace",
-                p_name=values["new-name"],
-                p_team=values["new-team"],
-                p_purpose=values["new-purpose"],
-                p_owner_email=values["new-owner"],
-            )
-            session["workspace_id"] = new_id
-        elif action == "save":
+        if action == "save":
             g.governance.rpc(
                 "update_workspace",
                 p_workspace=w["id"],
                 p_name=values["name"],
                 p_team=values["team"],
                 p_purpose=values["purpose"],
-            )
-        elif action == "change":
-            if not values["member"] or values["member-active"] not in (
-                "active",
-                "revoked",
-            ):
-                raise GovernanceError("Choose a member, role, and status.", 400)
-            g.governance.rpc(
-                "change_workspace_member",
-                p_workspace=w["id"],
-                p_user=values["member"],
-                p_role=values["member-role"],
-                p_active=values["member-active"] == "active",
             )
         else:
             raise PreventUpdate
@@ -627,31 +535,6 @@ def mutate(*args):
         if error.status in (401, 403, 503):
             abort(error.status)
         return dbc.Alert(str(error), color="danger"), dash.no_update
-
-
-@callback(
-    Output("workspace-admin-member-role", "value"),
-    Output("workspace-admin-member-active", "value"),
-    Input("workspace-admin-member", "value"),
-    State("workspace-admin-page-offset", "data"),
-    prevent_initial_call=True,
-)
-def selected_member(user_id, offset):
-    if not user_id:
-        raise PreventUpdate
-    try:
-        w = require_admin()
-        data = g.governance.rpc(
-            "workspace_admin_data", p_workspace=w["id"], p_offset=int(offset or 0)
-        )
-        member = next((m for m in data["members"] if m["user_id"] == user_id), None)
-        if not member or (w["role"] == "admin" and member["role"] != "viewer"):
-            raise PreventUpdate
-        return member["role"], "active" if member["active"] else "revoked"
-    except GovernanceError as error:
-        if error.status in (401, 403, 503):
-            abort(error.status)
-        raise PreventUpdate
 
 
 @callback(
@@ -700,3 +583,97 @@ def review_request_row(event):
         if error.status in (401, 403, 503):
             abort(error.status)
         return dbc.Alert(str(error), color="danger"), dash.no_update
+
+
+@callback(
+    Output("workspace-admin-activity-offset", "data"),
+    Input("workspace-admin-activity-previous", "n_clicks", allow_optional=True),
+    Input("workspace-admin-activity-next", "n_clicks", allow_optional=True),
+    State("workspace-admin-activity-offset", "data"),
+    State("workspace-admin-activity-page", "data", allow_optional=True),
+    prevent_initial_call=True,
+)
+def page_activity(previous, next_clicks, offset, page):
+    require_admin()
+    current = (page or {}).get("offset", offset or 0)
+    if ctx.triggered_id == "workspace-admin-activity-previous" and previous:
+        return max(0, current - 5)
+    if ctx.triggered_id == "workspace-admin-activity-next" and next_clicks:
+        if current + 5 < (page or {}).get("total", 0):
+            return min(100000, current + 5)
+    raise PreventUpdate
+
+
+@callback(
+    Output("workspace-admin-activity", "children"),
+    Input("app-location", "pathname"),
+    Input("workspace-admin-activity-offset", "data"),
+)
+def populate_activity(path, offset):
+    if path != "/workspace/admin":
+        raise PreventUpdate
+    try:
+        w = require_admin()
+        offset = int(offset or 0)
+        if offset < 0 or offset > 100000:
+            raise ValueError("Invalid page")
+        data = g.governance.rpc(
+            "workspace_governance_activity", p_workspace=w["id"], p_offset=offset
+        )
+        events, total, current = data["events"], data["total"], data["offset"]
+        return [
+            dcc.Store(
+                id="workspace-admin-activity-page",
+                data={"offset": current, "total": total},
+            ),
+            (
+                html.Ul(
+                    [activity_item(event) for event in events],
+                    className="admin-activity-list admin-activity-compact",
+                )
+                if events
+                else html.P("No governance activity yet.", className="admin-empty")
+            ),
+            html.Nav(
+                [
+                    html.Span(
+                        (
+                            f"{current + 1}–{current + len(events)} of {total} events"
+                            if total
+                            else "0 events"
+                        ),
+                        role="status",
+                        **{"aria-live": "polite"},
+                    ),
+                    html.Div(
+                        [
+                            dbc.Button(
+                                "Previous",
+                                id="workspace-admin-activity-previous",
+                                n_clicks=0,
+                                disabled=current == 0,
+                                color=None,
+                                className="button",
+                            ),
+                            html.Span(f"Page {current // 5 + 1}", className="muted"),
+                            dbc.Button(
+                                "Next",
+                                id="workspace-admin-activity-next",
+                                n_clicks=0,
+                                disabled=current + 5 >= total or current >= 100000,
+                                color=None,
+                                className="button",
+                            ),
+                        ]
+                    ),
+                ],
+                className="admin-compact-pagination",
+                **{"aria-label": "Governance activity pages"},
+            ),
+        ]
+    except (GovernanceError, ValueError) as error:
+        if isinstance(error, GovernanceError) and error.status in (401, 403):
+            abort(error.status)
+        return dbc.Alert(
+            "Unable to load governance activity. Reload to retry.", color="danger"
+        )

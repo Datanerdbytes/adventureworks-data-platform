@@ -89,6 +89,8 @@ SAFE_NEXT = frozenset(
         "/dashboard",
         "/workspace",
         "/workspace/admin",
+        "/workspace/admin/create",
+        "/workspace/admin/members",
         "/monitoring",
         "/tables",
         "/settings",
@@ -483,6 +485,16 @@ def install_auth(server):
                 "platform_admin",
             ):
                 raise GovernanceError("Workspace administration access denied.", 403)
+            if request.path == "/workspace/admin/members" and not any(
+                w["role"] in ("owner", "admin", "platform_admin")
+                for w in g.workspace_context["workspaces"]
+            ):
+                raise GovernanceError("Workspace administration access denied.", 403)
+            if (
+                request.path == "/workspace/admin/create"
+                and not g.workspace_context.get("platform_admin")
+            ):
+                raise GovernanceError("Platform administrator required.", 403)
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 origin_required()
         except GovernanceError as error:

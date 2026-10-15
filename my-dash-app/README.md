@@ -27,7 +27,9 @@ Dash requests, cached data, and exports. All workspaces share analytics data.
 ## Pages and preferences
 
 - `/workspace`: database Workspace Summary with explicitly labeled sample sections.
-- `/workspace/admin`: workspace provisioning and membership administration.
+- `/workspace/admin`: workspace details, verified access requests, registration link, and compact governance activity with five events per page.
+- `/workspace/admin/members`: member directory with workspace, email, role, and access filters; ten memberships per page and a details/access modal.
+- `/workspace/admin/create`: dedicated workspace creation for Platform Admins; validates details and an existing confirmed owner, then opens the new workspace.
 - `/dashboard`: activity, metrics, recent runs, and workspace details.
 - `/monitoring`: pipeline and sample-window filters, duration chart, refresh, run grid.
 - `/tables`: Products, Customers, and Sales; global search and column sorting/filtering.
@@ -259,3 +261,12 @@ once, resolving tied frequencies with known values before Unknown and then
 alphabetically. The eight-column AG Grid supports numeric sorting/filtering,
 10-row pagination and CSV export of all filtered/sorted rows with raw numeric
 values. The customer page no longer runs the synthetic supporting-detail callback.
+
+The member directory and activity pager require
+`supabase/migrations/202610150001_admin_directory_activity.sql`. It adds
+permission-checked read RPCs; member changes still use the existing transactional
+RPC. Local SQL tests exercise these functions in disposable PostgreSQL.
+On 2026-10-15, this migration was applied to the configured hosted Supabase
+project `lcnsbwohtrxrtissvbzl`; authenticated reads and anonymous execute denial
+were verified. Local preview port 8052 uses synthetic data; port 8050 is the
+regular authenticated application.

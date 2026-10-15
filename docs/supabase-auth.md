@@ -121,17 +121,29 @@ Open `/workspace/admin` after sign-in:
 - Viewer reads reports, tables, and exports. Viewers cannot open administration
   or use its mutation functions, even by forging callback requests.
 
-Approval normalizes an email and assigns a role. On the person's next session
-synchronization, confirmed email is matched and membership binds to the verified
-Supabase user ID. No email invite is sent. Existing bound memberships must be
-changed through Member controls, including reactivating revoked access. Pending
-approvals can be revoked. Membership revocation takes effect at the next request,
+Approving a verified access request creates or updates membership transactionally
+for the confirmed Supabase user. No email invite is sent. Existing memberships
+must be changed through the details modal on `/workspace/admin/members`, including
+reactivating revoked access. Pending requests can be rejected. Membership
+revocation takes effect at the next request,
 even while a previously issued token remains valid. Removing the last active
 owner is blocked under a workspace row lock, including simultaneous requests.
 
-Lists fetch at most 50 records; change List Offset in increments of 50 for more.
-The recent activity section shows the last 20 governance events. The switcher
-lists authorized workspaces, validates the selection again on the server, and
+Approval requests fetch at most 50 records per page. The members page filters
+across authorized workspaces, email, role, and access, returning ten memberships
+per page. Selecting a member opens canonical details and permitted access edits.
+Recent governance activity uses compact rows with actor emails and UTC times,
+and an independent five-event pager across history. These read paths require
+`202610150001_admin_directory_activity.sql`, applied to hosted project
+`lcnsbwohtrxrtissvbzl` on 2026-10-15. Both read functions were verified with an
+existing confirmed administrator identity; anonymous execution is denied.
+Migration SHA-256: `991f0a5b49e20e25c84fed88cd72c5db24ae6f742ad9354e954c85c6a978d2f5`.
+The hosted project had no Supabase CLI migration-history table at application
+time; do not re-run this migration. The local authenticated app on port 8050
+was restarted and its overview rendered live member counts and audit events.
+Application deployment to hosted infrastructure remains separate.
+
+The switcher lists authorized workspaces, validates the selection again on the server, and
 reloads the shell. User roles and Supabase tokens are never stored in `dcc.Store`.
 RLS and explicit grants protect direct database access. Governance mutations use
 checked RPCs, enforce actor permissions inside Postgres, and write audit events

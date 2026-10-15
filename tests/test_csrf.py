@@ -155,11 +155,85 @@ class CsrfTests(unittest.TestCase):
 
     def mutation_body(self, action="save"):
         self.client.get("/_dash-layout")
+        if action == "change":
+            key = next(
+                key
+                for key, item in app.callback_map.items()
+                if "workspace-members-edit-status.children" in key
+                and item["inputs"][0]["id"] == "workspace-members-save"
+            )
+            return {
+                "output": key,
+                "outputs": [
+                    output.to_dict() for output in app.callback_map[key]["output"]
+                ],
+                "inputs": [
+                    {"id": "workspace-members-save", "property": "n_clicks", "value": 1}
+                ],
+                "state": [
+                    {
+                        "id": "workspace-members-target",
+                        "property": "data",
+                        "value": {
+                            "workspace_id": WORKSPACE["id"],
+                            "user_id": "44444444-4444-4444-4444-444444444444",
+                        },
+                    },
+                    {
+                        "id": "workspace-members-edit-role",
+                        "property": "value",
+                        "value": "viewer",
+                    },
+                    {
+                        "id": "workspace-members-edit-active",
+                        "property": "value",
+                        "value": "active",
+                    },
+                    {
+                        "id": "workspace-members-scope",
+                        "property": "value",
+                        "value": WORKSPACE["id"],
+                    },
+                ],
+                "changedPropIds": ["workspace-members-save.n_clicks"],
+            }
+        if action == "create":
+            key = next(
+                key
+                for key in app.callback_map
+                if "workspace-create-status.children" in key
+            )
+            return {
+                "output": key,
+                "outputs": [
+                    output.to_dict() for output in app.callback_map[key]["output"]
+                ],
+                "inputs": [
+                    {"id": "workspace-create-form", "property": "n_submit", "value": 1}
+                ],
+                "state": [
+                    {
+                        "id": "workspace-create-" + name,
+                        "property": "value",
+                        "value": value,
+                    }
+                    for name, value in zip(
+                        ("name", "team", "purpose", "owner"),
+                        (
+                            "New workspace",
+                            "Analytics",
+                            "Reporting",
+                            "owner@example.test",
+                        ),
+                    )
+                ],
+                "changedPropIds": ["workspace-create-form.n_submit"],
+            }
         key = next(
             key
             for key, item in app.callback_map.items()
             if "workspace-admin-status.children" in key
-            and len(item["inputs"]) == len(ACTION_INPUTS)
+            and item["inputs"][0]["id"] == "workspace-admin-save"
         )
         return {
             "output": key,
@@ -301,3 +375,13 @@ class CsrfTests(unittest.TestCase):
             )
             self.assertEqual(allowed.status_code, 200)
             self.assertTrue(any(name == rpc for name, _ in FakeGateway.calls))
+            if rpc == "create_workspace":
+                self.sync(token="approved")
+                FakeGateway.calls = []
+                forbidden = self.client.post(
+                    "/_dash-update-component",
+                    json=body,
+                    headers=csrf_headers(self.client),
+                )
+                self.assertEqual(forbidden.status_code, 403)
+                self.assertFalse(any(name == rpc for name, _ in FakeGateway.calls))
