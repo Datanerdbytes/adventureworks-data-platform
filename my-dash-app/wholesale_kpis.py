@@ -1,5 +1,7 @@
 """Filter-aware wholesale account and revenue metrics."""
 
+from warehouse_cache import warehouse_memoize
+
 from google.cloud import bigquery
 from revenue_kpis import cache, filter_parameters, validate_warehouse_identifiers
 
@@ -22,7 +24,7 @@ def active_accounts_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_active_accounts(
     project,
     dataset,
@@ -69,7 +71,7 @@ def reseller_revenue_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_reseller_revenue(
     project,
     dataset,
@@ -117,7 +119,7 @@ def wholesale_orders_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_wholesale_orders(
     project,
     dataset,
@@ -147,7 +149,7 @@ def load_wholesale_orders(
     return int(row["wholesale_orders"])
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60, coalesce=False)
 def load_wholesale_comparison(
     project, dataset, year, quarter, channel, category, subcategory
 ):
@@ -188,7 +190,7 @@ def top_resellers_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_top_resellers(
     project,
     dataset,
@@ -239,7 +241,7 @@ def reseller_scatter_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_reseller_scatter(
     project,
     dataset,
@@ -285,7 +287,7 @@ def wholesale_product_mix_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_wholesale_product_mix(
     project,
     dataset,
@@ -348,7 +350,7 @@ def wholesale_operations_sql(project, dataset, staging_dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_wholesale_operations(
     project,
     dataset,

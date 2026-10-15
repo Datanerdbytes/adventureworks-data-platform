@@ -5,6 +5,8 @@ mart supplies calendar/channel semantics. Neither retains customer IDs or
 customer-state/month grain, so compute non-additive KPIs from their source facts.
 """
 
+from warehouse_cache import warehouse_memoize
+
 from google.cloud import bigquery
 from revenue_kpis import cache, filter_parameters
 from revenue_kpis import (
@@ -107,7 +109,7 @@ def customer_scorecards_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_scorecards(
     project,
     dataset,
@@ -176,7 +178,7 @@ def customer_demographics_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_demographics(
     project,
     dataset,
@@ -233,7 +235,7 @@ def customer_map_sql(project, dataset, use_mart=False):
       GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_map(
     project,
     dataset,
@@ -301,7 +303,7 @@ def customer_lifecycle_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_lifecycle(
     project,
     dataset,
@@ -359,7 +361,7 @@ def customer_segment_revenue_sql(project, dataset, dimension):
       GROUP BY 1 ORDER BY revenue DESC, segment LIMIT 101"""  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_segment_revenue(
     project,
     dataset,
@@ -452,7 +454,7 @@ def customer_ledger_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_customer_ledger(
     project,
     dataset,

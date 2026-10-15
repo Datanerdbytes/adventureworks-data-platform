@@ -2,12 +2,21 @@ import argparse
 import os
 import re
 import sys
+import tempfile
+from contextlib import suppress
 from pathlib import Path
 from dotenv import load_dotenv
 import sqlalchemy as sa
-import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from google.cloud import bigquery
 from db_connector import get_postgres_engine
+from elt_staging import (
+    DEFAULT_BATCH_SIZE,
+    MAX_BATCH_SIZE,
+    arrow_type,
+    write_parquet_batches,
+)
 
 PRODUCTION_PROJECT_ID = "quantum-echo-data-eng-prod"
 DEFAULT_REGION = "asia-east2"
@@ -231,8 +240,69 @@ def _print_dry_run(
     print("=" * 70)
 
 
+def _validate_batch_size(batch_size):
+    if type(batch_size) is not int or not 1 <= batch_size <= MAX_BATCH_SIZE:
+        raise PipelineConfigurationError(
+            f"batch_size must be an integer between 1 and {MAX_BATCH_SIZE}."
+        )
+
+
+def spool_table(connection, table_name, path, batch_size=DEFAULT_BATCH_SIZE):
+    """Reflect a fixed source table and stream it to a typed Parquet file."""
+    _validate_batch_size(batch_size)
+    if table_name not in TABLES_TO_MIGRATE:
+        raise PipelineConfigurationError("Unknown source table.")
+    columns = sa.inspect(connection).get_columns(table_name, schema="public")
+    schema = pa.schema(
+        [pa.field(col["name"], arrow_type(col["type"])) for col in columns]
+    )
+    quote = connection.dialect.identifier_preparer.quote
+    selected = ", ".join(quote(col["name"]) for col in columns)
+    query = sa.text(f"SELECT {selected} FROM public.{table_name}")  # nosec B608
+    streaming = connection.execution_options(
+        stream_results=True, yield_per=batch_size, max_row_buffer=batch_size
+    )
+    result = streaming.execute(query)
+    try:
+        return write_parquet_batches(result, schema, path, batch_size)
+    finally:
+        with suppress(Exception):
+            result.close()
+
+
+def bigquery_schema(arrow_schema):
+    """Preserve source logical types instead of Parquet timestamp autodetection."""
+    fields = []
+    for field in arrow_schema:
+        kind = field.type
+        if pa.types.is_timestamp(kind):
+            target_type = "TIMESTAMP" if kind.tz else "DATETIME"
+        elif pa.types.is_date(kind):
+            target_type = "DATE"
+        elif pa.types.is_time(kind):
+            target_type = "TIME"
+        elif pa.types.is_boolean(kind):
+            target_type = "BOOLEAN"
+        elif pa.types.is_integer(kind):
+            target_type = "INTEGER"
+        elif pa.types.is_floating(kind):
+            target_type = "FLOAT"
+        elif pa.types.is_binary(kind):
+            target_type = "BYTES"
+        elif pa.types.is_string(kind):
+            target_type = "STRING"
+        else:
+            raise PipelineConfigurationError("Unsupported staged column type.")
+        fields.append(bigquery.SchemaField(field.name, target_type))
+    return fields
+
+
 def run_elt_migration(
-    dry_run=False, confirm_production=False, destination=None, interactive=None
+    dry_run=False,
+    confirm_production=False,
+    destination=None,
+    interactive=None,
+    batch_size=DEFAULT_BATCH_SIZE,
 ):
     """Run the ELT migration with safeguards.
 
@@ -242,12 +312,14 @@ def run_elt_migration(
         destination: Exact destination confirmation string.
         interactive: Whether to allow interactive prompts.
                      If None, auto-detected from stdin.
+        batch_size: Bounded source rows per fetch (1 to MAX_BATCH_SIZE).
 
     Raises:
         PipelineConfigurationError: on missing or contradictory configuration.
         PipelineConfirmationError: if production confirmation requirements are not met.
     """
     _validate_options(dry_run, confirm_production, destination, interactive)
+    _validate_batch_size(batch_size)
     _load_env()
 
     if interactive is None:
@@ -284,59 +356,74 @@ def run_elt_migration(
 
     print("Connecting to source (PostgreSQL) and initializing BigQuery Client...")
     pg_engine = get_postgres_engine()
-    bq_client = bigquery.Client(project=project_id)
-
-    print(f"\nStarting cloud-native database migration to {DEFAULT_REGION}...")
-
-    successful_tables = []
-    failed_tables = []
-
-    for table_name in TABLES_TO_MIGRATE:
-        try:
-            print(f"Processing table: {table_name}...")
-
-            with pg_engine.connect() as pg_conn:
-                query = sa.text(f"SELECT * FROM public.{table_name}")  # nosec B608
-                query_result = pg_conn.execute(query).fetchall()
-                records = [dict(row._mapping) for row in query_result]
-
-            if records:
-                df = pd.DataFrame(records)
-
-                for col in df.columns:
-                    if df[col].apply(lambda x: x.__class__.__name__ == "Decimal").any():
-                        df[col] = df[col].astype(float)
-
+    bq_client = None
+    try:
+        bq_client = bigquery.Client(project=project_id)
+        print(f"\nStarting database migration to {DEFAULT_REGION}...")
+        successful_tables = []
+        failed_tables = []
+        for table_name in TABLES_TO_MIGRATE:
+            temporary = None
+            connection = None
+            try:
+                print(f"Processing table: {table_name}...")
+                temporary = tempfile.TemporaryDirectory(prefix="adventureworks-elt-")
+                path = Path(temporary.name) / "table.parquet"
+                connection = pg_engine.connect()
+                try:
+                    row_count = spool_table(connection, table_name, path, batch_size)
+                finally:
+                    with suppress(Exception):
+                        connection.close()
+                    connection = None
+                if not row_count:
+                    print(f"  Skipping {table_name}: Table is empty.")
+                    continue
                 table_ref = f"{project_id}.{dataset_id}.{table_name}"
-
                 job_config = bigquery.LoadJobConfig(
                     write_disposition=WRITE_DISPOSITION,
+                    source_format=bigquery.SourceFormat.PARQUET,
+                    schema=bigquery_schema(pq.read_schema(path)),
                 )
-
-                print(
-                    f"  -> Streaming {len(records)} rows directly to BigQuery via cloud APIs..."
-                )
-                job = bq_client.load_table_from_dataframe(
-                    df, table_ref, job_config=job_config, location=DEFAULT_REGION
-                )
-                job.result()
-
+                print(f"  -> Loading {row_count} staged rows to BigQuery...")
+                with path.open("rb") as source:
+                    job = bq_client.load_table_from_file(
+                        source,
+                        table_ref,
+                        job_config=job_config,
+                        location=DEFAULT_REGION,
+                    )
+                    job.result()
                 print(f"  Success: {table_name} is fully loaded to BigQuery!")
                 successful_tables.append(table_name)
-            else:
-                print(f"  Skipping {table_name}: Table is empty.")
-
-        except Exception as e:
-            print(f"  Error migrating table {table_name}: {_safe_error_category(e)}")
-            failed_tables.append(table_name)
-            continue
-
-    print(
-        f"Migration Summary: {len(successful_tables)}/{len(TABLES_TO_MIGRATE)} tables successfully migrated."
-    )
-    if failed_tables:
-        print(f"Failed tables: {failed_tables}")
-        raise SystemExit(1)
+            except Exception as error:
+                print(
+                    f"  Error migrating table {table_name}: {_safe_error_category(error)}"
+                )
+                failed_tables.append(table_name)
+            finally:
+                if connection is not None:
+                    with suppress(Exception):
+                        connection.close()
+                if temporary is not None:
+                    try:
+                        temporary.cleanup()
+                    except Exception:
+                        print(
+                            "  Warning: temporary export cleanup failed; operator cleanup required."
+                        )
+        print(
+            f"Migration Summary: {len(successful_tables)}/{len(TABLES_TO_MIGRATE)} tables successfully migrated."
+        )
+        if failed_tables:
+            print(f"Failed tables: {failed_tables}")
+            raise SystemExit(1)
+    finally:
+        if bq_client is not None:
+            with suppress(Exception):
+                bq_client.close()
+        with suppress(Exception):
+            pg_engine.dispose()
 
 
 def main():
@@ -366,6 +453,13 @@ def main():
         help="Disable interactive prompts. All confirmations must be provided via flags.",
     )
 
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Source batch rows (1 to {MAX_BATCH_SIZE}; default {DEFAULT_BATCH_SIZE}).",
+    )
+
     args = parser.parse_args()
 
     interactive = not args.no_interactive and _is_interactive()
@@ -376,6 +470,7 @@ def main():
             confirm_production=args.confirm_production,
             destination=args.destination,
             interactive=interactive,
+            batch_size=args.batch_size,
         )
     except (PipelineConfigurationError, PipelineConfirmationError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

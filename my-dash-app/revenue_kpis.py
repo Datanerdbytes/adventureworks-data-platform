@@ -2,7 +2,6 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-import fcntl
 import hashlib
 import os
 from pathlib import Path
@@ -11,9 +10,9 @@ import tempfile
 
 import dash_bootstrap_components as dbc
 from flask_caching import Cache
-from flask import current_app
 from google.cloud import bigquery
 from components import metric
+from warehouse_cache import positive_threshold, positive_lock_timeout, warehouse_memoize
 
 cache = Cache()
 KPI_FIELDS = (
@@ -26,6 +25,19 @@ KPI_FIELDS = (
 
 
 def init_kpi_cache(server):
+    threshold = positive_threshold(
+        server.config.get(
+            "KPI_CACHE_THRESHOLD", os.environ.get("KPI_CACHE_THRESHOLD", "500")
+        )
+    )
+    lock_timeout = positive_lock_timeout(
+        server.config.get(
+            "KPI_CACHE_LOCK_TIMEOUT_SECONDS",
+            os.environ.get("KPI_CACHE_LOCK_TIMEOUT_SECONDS", "30"),
+        )
+    )
+    server.config["KPI_CACHE_THRESHOLD"] = threshold
+    server.config["KPI_CACHE_LOCK_TIMEOUT_SECONDS"] = lock_timeout
     # Gunicorn workers must share the cache and locks to coalesce cold loads.
     namespace = hashlib.sha256(
         str(Path(__file__).resolve().parent).encode()
@@ -41,7 +53,7 @@ def init_kpi_cache(server):
             "CACHE_TYPE": "FileSystemCache",
             "CACHE_DIR": str(cache_dir),
             "CACHE_DEFAULT_TIMEOUT": 60,
-            "CACHE_THRESHOLD": 10,
+            "CACHE_THRESHOLD": threshold,
         },
     )
 
@@ -96,7 +108,7 @@ def kpi_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_revenue_kpis(project, dataset):
     validate_warehouse_identifiers(project, dataset)
     with bigquery.Client(project=project) as client:
@@ -218,7 +230,7 @@ def kpi_cards(values=None, note="All-time warehouse total"):
     return cards
 
 
-@cache.memoize(timeout=300)
+@warehouse_memoize(cache, timeout=300)
 def load_filter_catalog(project, dataset):
     validate_warehouse_identifiers(project, dataset)
     sql = f"""SELECT DISTINCT calendar_year, calendar_quarter_name, sales_channel,
@@ -311,22 +323,10 @@ def load_executive_report(
 ):
     validate_warehouse_identifiers(project, dataset)
     filters = (project, dataset, year, quarter, channel, category, subcategory)
-    # Bounded lock stripes avoid accumulating a file for every filter selection.
-    stripe = int(hashlib.sha256(repr(filters).encode()).hexdigest(), 16) % 64
-    lock_path = (
-        current_app.extensions["executive_query_lock_dir"] / f"query-{stripe}.lock"
-    )
-    with lock_path.open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            # Check memoization *after* acquiring the cross-process lock, so
-            # waiting callbacks consume the result written by the first one.
-            return _load_executive_report(*filters)
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    return _load_executive_report(*filters)
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def _load_executive_report(
     project,
     dataset,

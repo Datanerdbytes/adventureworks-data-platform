@@ -169,7 +169,26 @@ class DryRunTests(unittest.TestCase):
                 )
 
 
-class CallableApiTests(unittest.TestCase):
+def configure_source(engine, rows):
+    connection = engine.connect.return_value
+    connection.dialect.identifier_preparer.quote.side_effect = lambda name: name
+    connection.execution_options.return_value = connection
+    connection.execute.side_effect = lambda query: MagicMock(
+        fetchmany=MagicMock(side_effect=[rows, []])
+    )
+    return connection
+
+
+class SourceMetadataTests(unittest.TestCase):
+    def setUp(self):
+        metadata = patch("elt_pipeline.sa.inspect")
+        self.addCleanup(metadata.stop)
+        metadata.start().return_value.get_columns.return_value = [
+            {"name": "id", "type": elt_pipeline.sa.Integer()},
+        ]
+
+
+class CallableApiTests(SourceMetadataTests):
     def test_direct_call_without_confirmation_fails_for_production(self):
         with patch.dict(
             os.environ,
@@ -192,14 +211,11 @@ class CallableApiTests(unittest.TestCase):
             MagicMock(_mapping={"id": 1, "name": "test"}),
         ]
         mock_engine = MagicMock()
-        mock_conn = mock_engine.connect.return_value.__enter__.return_value
-        mock_result = MagicMock()
-        mock_result.fetchall.return_value = mock_records
-        mock_conn.execute.return_value = mock_result
+        configure_source(mock_engine, mock_records)
 
         mock_bq_client = MagicMock()
         mock_job = MagicMock()
-        mock_bq_client.load_table_from_dataframe.return_value = mock_job
+        mock_bq_client.load_table_from_file.return_value = mock_job
 
         with patch.dict(
             os.environ,
@@ -227,16 +243,13 @@ class CallableApiTests(unittest.TestCase):
                                 project=PRODUCTION_PROJECT_ID
                             )
                             self.assertEqual(
-                                mock_bq_client.load_table_from_dataframe.call_count,
+                                mock_bq_client.load_table_from_file.call_count,
                                 len(TABLES_TO_MIGRATE),
                             )
 
     def test_authorized_execution_handles_empty_tables(self):
         mock_engine = MagicMock()
-        mock_conn = mock_engine.connect.return_value.__enter__.return_value
-        mock_result = MagicMock()
-        mock_result.fetchall.return_value = []
-        mock_conn.execute.return_value = mock_result
+        configure_source(mock_engine, [])
 
         mock_bq_client = MagicMock()
 
@@ -262,7 +275,7 @@ class CallableApiTests(unittest.TestCase):
                                 interactive=True,
                             )
 
-                            mock_bq_client.load_table_from_dataframe.assert_not_called()
+                            mock_bq_client.load_table_from_file.assert_not_called()
 
 
 class NoninteractiveTests(unittest.TestCase):
@@ -347,7 +360,7 @@ class ConfigurationValidationTests(unittest.TestCase):
             self.assertTrue(is_production_destination(project_id))
 
 
-class SafeguardRegressionTests(unittest.TestCase):
+class SafeguardRegressionTests(SourceMetadataTests):
     def test_invalid_destination_configuration_never_creates_clients(self):
         cases = [
             ("   ", "test_dataset"),
@@ -492,17 +505,14 @@ class SafeguardRegressionTests(unittest.TestCase):
     def test_per_table_errors_are_sanitized_and_preserve_failure_exit(self):
         for failure_stage in ("source", "target"):
             engine = MagicMock()
-            connection = engine.connect.return_value.__enter__.return_value
+            connection = configure_source(engine, [MagicMock(_mapping={"id": 1})])
             target = MagicMock()
             if failure_stage == "source":
                 connection.execute.side_effect = ConnectionError(
                     "postgresql://user:synthetic-secret@host/db"
                 )
             else:
-                connection.execute.return_value.fetchall.return_value = [
-                    MagicMock(_mapping={"id": 1})
-                ]
-                target.load_table_from_dataframe.side_effect = RuntimeError(
+                target.load_table_from_file.side_effect = RuntimeError(
                     "customer private-row synthetic-secret"
                 )
             output = io.StringIO()
@@ -532,9 +542,7 @@ class SafeguardRegressionTests(unittest.TestCase):
 
     def test_noninteractive_production_loads_still_use_exact_target_and_truncate(self):
         engine = MagicMock()
-        engine.connect.return_value.__enter__.return_value.execute.return_value.fetchall.return_value = [
-            MagicMock(_mapping={"id": 1})
-        ]
+        configure_source(engine, [MagicMock(_mapping={"id": 1})])
         target = MagicMock()
         with (
             patch.dict(
@@ -555,11 +563,9 @@ class SafeguardRegressionTests(unittest.TestCase):
                 destination=PRODUCTION_PROJECT_ID + ".raw_adventureworks",
                 interactive=False,
             )
-        self.assertEqual(
-            target.load_table_from_dataframe.call_count, len(TABLES_TO_MIGRATE)
-        )
+        self.assertEqual(target.load_table_from_file.call_count, len(TABLES_TO_MIGRATE))
         for table, invocation in zip(
-            TABLES_TO_MIGRATE, target.load_table_from_dataframe.call_args_list
+            TABLES_TO_MIGRATE, target.load_table_from_file.call_args_list
         ):
             self.assertEqual(
                 invocation.args[1],

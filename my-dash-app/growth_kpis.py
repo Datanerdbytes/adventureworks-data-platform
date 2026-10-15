@@ -1,5 +1,7 @@
 """Growth scorecards from the monthly mart and order-grain daily history."""
 
+from warehouse_cache import warehouse_memoize
+
 from decimal import Decimal
 import pandas as pd
 from google.cloud import bigquery
@@ -56,7 +58,7 @@ def growth_scorecards_sql(project, dataset, product_filtered=False):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_growth_scorecards(
     project,
     dataset,
@@ -183,7 +185,7 @@ def day_type_sales_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_day_type_sales(
     project,
     dataset,
@@ -234,7 +236,7 @@ def seasonality_matrix_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_seasonality_matrix(
     project,
     dataset,
@@ -302,7 +304,7 @@ def growth_ledger_sql(project, dataset):
     """  # nosec B608
 
 
-@cache.memoize(timeout=60)
+@warehouse_memoize(cache, timeout=60)
 def load_growth_ledger(
     project,
     dataset,
