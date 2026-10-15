@@ -1,6 +1,11 @@
 # Performance implementation handoff
 
-Prepared 2026-10-15. Status: **implementation in progress; acceptance pending**.
+Prepared 2026-10-15. Status: **implemented, reviewed, verified offline, and integrated locally**.
+
+Accepted code candidate: `58b202fd7a365fd066a3e49c118d722838b845ca` on
+`codex/performance-integration`. See the [acceptance record](PERFORMANCE_IMPLEMENTATION_RESULTS.md)
+for submitted commits, review corrections, commands/results, and operational
+limits. No push, merge into `integration`, deployment, or live execution occurred.
 
 Read [the audit review](PERFORMANCE_AUDIT_REVIEW.md) before implementing. The
 original audit is a set of allegations, not an acceptance specification.
@@ -31,12 +36,12 @@ original audit is a set of allegations, not an acceptance specification.
 
 ## Parallel tracks and ownership
 
-| Track                                     | Priority and evidence                         | Exclusive files                                                                                                                                                                                                                     | Dependencies                                                                 | Status / submitted SHA |
-| ----------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------- |
-| C — Cache capacity and miss coalescing    | First web-path improvement; F02, A01          | `my-dash-app/revenue_kpis.py`, `growth_kpis.py`, `customer_kpis.py`, `wholesale_kpis.py`; a new cache coordination helper if needed; `tests/test_cache_coverage.py`; new cache concurrency/capacity tests; `docs/cache-coverage.md` | No dependency on E; implement C1 before C2                                   | Draft / none           |
-| E — Bounded ELT extraction and lifecycle  | Confirmed unbounded memory; F09, A02          | `elt_pipeline.py`; new extraction/staging helper if needed; `tests/test_elt_pipeline.py`; new ELT streaming tests; `docs/elt-safety.md`                                                                                             | No dependency on C                                                           | Draft / none           |
-| M — Reproducible offline characterization | Establish evidence for deferred optimizations | New `scripts/benchmark_performance.py`, new `docs/performance-benchmark.md` only                                                                                                                                                    | May run concurrently; use existing public interfaces and temporary resources | Draft / none           |
-| I — Integration and independent review    | All acceptance requirements                   | This plan, review evidence, and shared configuration only after ordered handoff                                                                                                                                                     | C, E, M submissions                                                          | Pending / none         |
+| Track                                     | Priority and evidence                         | Exclusive files                                                                                                                                                                                                                     | Dependencies                                                                 | Status / submitted SHA                |
+| ----------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
+| C — Cache capacity and miss coalescing    | First web-path improvement; F02, A01          | `my-dash-app/revenue_kpis.py`, `growth_kpis.py`, `customer_kpis.py`, `wholesale_kpis.py`; a new cache coordination helper if needed; `tests/test_cache_coverage.py`; new cache concurrency/capacity tests; `docs/cache-coverage.md` | No dependency on E; implement C1 before C2                                   | Accepted / `1fad3c9`                  |
+| E — Bounded ELT extraction and lifecycle  | Confirmed unbounded memory; F09, A02          | `elt_pipeline.py`; new extraction/staging helper if needed; `tests/test_elt_pipeline.py`; new ELT streaming tests; `docs/elt-safety.md`                                                                                             | No dependency on C                                                           | Accepted patch / integrated `58b202f` |
+| M — Reproducible offline characterization | Establish evidence for deferred optimizations | New `scripts/benchmark_performance.py`, new `docs/performance-benchmark.md` only                                                                                                                                                    | May run concurrently; use existing public interfaces and temporary resources | Accepted / `60b5248`                  |
+| I — Integration and independent review    | All acceptance requirements                   | This plan, review evidence, and shared configuration only after ordered handoff                                                                                                                                                     | C, E, M submissions                                                          | Verified / `58b202f`                  |
 
 One implementing agent may coordinate these tracks with parallel workers. Shared
 files such as `.env.example`, `pyproject.toml`, `uv.lock`, or hook configuration
@@ -215,16 +220,16 @@ Do not weaken checks, alter dependencies, or run ELT as a test. Auth code change
 are outside C/E/M scope; if later approved, follow the full auth rebuild/check
 contract in AGENTS.md. Required checks blocked by setup must be reported.
 
-| Requirement                              | Required review evidence                                               | Accepted SHA/result |
-| ---------------------------------------- | ---------------------------------------------------------------------- | ------------------- |
-| Capacity and TTL contract                | C1 eviction/reuse tests; validated configuration; unchanged TTLs       | Pending             |
-| Same-key concurrent loads                | C2 cross-process cold/expired query-count evidence                     | Pending             |
-| Isolation and failure recovery           | All loader inputs; nested/collision/timeout cases; inventory retained  | Pending             |
-| ELT bounded extraction                   | Streaming cursor, bounded batches, synthetic memory comparison         | Pending             |
-| Complete publication                     | Read-back spool tests; one final truncate load; no partial publication | Pending             |
-| Safety and resource lifecycle            | Existing guard tests plus initialization/error cleanup cases           | Pending             |
-| Deferred bottlenecks remain evidence-led | Reproducible M results; no speculative rewrites                        | Pending             |
-| Combined regression and code quality     | Commands, results, and exact candidate SHA                             | Pending             |
+| Requirement                              | Required review evidence                                               | Accepted SHA/result                        |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| Capacity and TTL contract                | C1 eviction/reuse tests; validated configuration; unchanged TTLs       | Passed at `58b202f`; see acceptance record |
+| Same-key concurrent loads                | C2 cross-process cold/expired query-count evidence                     | Passed at `58b202f`; see acceptance record |
+| Isolation and failure recovery           | All loader inputs; nested/collision/timeout cases; inventory retained  | Passed at `58b202f`; see acceptance record |
+| ELT bounded extraction                   | Streaming cursor, bounded batches, synthetic memory comparison         | Passed at `58b202f`; see acceptance record |
+| Complete publication                     | Read-back spool tests; one final truncate load; no partial publication | Passed at `58b202f`; see acceptance record |
+| Safety and resource lifecycle            | Existing guard tests plus initialization/error cleanup cases           | Passed at `58b202f`; see acceptance record |
+| Deferred bottlenecks remain evidence-led | Reproducible M results; no speculative rewrites                        | Passed at `58b202f`; see acceptance record |
+| Combined regression and code quality     | Commands, results, and exact candidate SHA                             | Passed at `58b202f`; see acceptance record |
 
 Update this table only from inspected code and executed checks. Report separately:
 implemented, verified offline, integrated locally, pushed, deployed, and measured
