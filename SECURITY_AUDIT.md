@@ -229,7 +229,7 @@ WHERE segment = '{user_segment}'
 
 ### Phase 4: Ongoing
 
-- Implement automated security scanning (SAST + dependency audit) in CI/CD
+- ✅ Implemented in `.github/workflows/dependency-audit.yml`: pinned Bandit SAST and locked production dependency scanning with `pip-audit` run as independent jobs on pull requests and pushes to `integration`/`main`, and weekly on Monday at 09:00 UTC. Bandit runs only the shared pre-commit `bandit` hook over all tracked Python files, preserving its medium/high severity and confidence thresholds and exclusions; the dependency audit runs once in its existing job.
 - Conduct periodic penetration testing of the auth flow
 - Review and rotate Supabase anon/publishable keys annually
 - Monitor `governance_audit_events` for anomalous patterns
@@ -258,7 +258,6 @@ All three high-priority vulnerabilities (VULN-03, VULN-04, VULN-05) have been re
 ### Remaining Operational Work
 
 - Configure `RATE_LIMIT_REDIS_URL` in production environment
-- Add `pip-audit` to CI/CD pipeline for automated scanning
 - Phase 3 CSRF implementation and operational limits are recorded below
 
 ---
