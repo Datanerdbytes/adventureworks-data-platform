@@ -12,6 +12,9 @@ Lakebase screenshot. Original AdventureWorks branding; no copied vendor assets.
 - White bordered cards, thin grid lines, blue/teal charts with legends.
 - Explicit demo labels; no controls that imply a real connection or pipeline run.
 - Visible keyboard focus; labeled icon controls; reduced motion support.
+- Sidebar workspace names wrap naturally without ellipsis or a line clamp. Break
+  unspaced names only as needed. Keep the collapse control beside the Workspace
+  label, separate from the identity card; retain the control in collapsed mode.
 
 The UI UX Pro Max search matched data-dense dashboard styling and keyboard
 navigation guidance. Its unrelated enterprise marketing/landing-page pattern

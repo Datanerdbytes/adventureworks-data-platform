@@ -236,12 +236,13 @@ class LoginTests(unittest.TestCase):
             )
 
     def test_forged_admin_callback_cannot_bypass_role(self):
-        from pages.workspace_admin import ACTION_INPUTS, STATE_FIELDS
-
         self.sync("viewer")
         self.client.get("/_dash-layout")
         key = next(
-            k for k in app.callback_map if "workspace-admin-status.children" in k
+            k
+            for k, item in app.callback_map.items()
+            if "workspace-members-edit-status.children" in k
+            and item["inputs"][0]["id"] == "workspace-members-save"
         )
         FakeGateway.calls = []
         response = self.client.post(
@@ -249,30 +250,37 @@ class LoginTests(unittest.TestCase):
             json={
                 "output": key,
                 "outputs": [
-                    {"id": "workspace-admin-status", "property": "children"},
-                    {"id": "workspace-admin-reload", "property": "href"},
+                    output.to_dict() for output in app.callback_map[key]["output"]
                 ],
                 "inputs": [
-                    {
-                        "id": "workspace-admin-" + name,
-                        "property": "n_clicks",
-                        "value": 1 if name == "change" else 0,
-                    }
-                    for name in ACTION_INPUTS
+                    {"id": "workspace-members-save", "property": "n_clicks", "value": 1}
                 ],
                 "state": [
                     {
-                        "id": "workspace-admin-" + name,
+                        "id": "workspace-members-target",
+                        "property": "data",
+                        "value": {
+                            "workspace_id": WORKSPACE["id"],
+                            "user_id": "44444444-4444-4444-4444-444444444444",
+                        },
+                    },
+                    {
+                        "id": "workspace-members-edit-role",
                         "property": "value",
-                        "value": (
-                            "owner"
-                            if name == "request-role"
-                            else "attacker@example.test"
-                        ),
-                    }
-                    for name in STATE_FIELDS
+                        "value": "owner",
+                    },
+                    {
+                        "id": "workspace-members-edit-active",
+                        "property": "value",
+                        "value": "active",
+                    },
+                    {
+                        "id": "workspace-members-scope",
+                        "property": "value",
+                        "value": WORKSPACE["id"],
+                    },
                 ],
-                "changedPropIds": ["workspace-admin-change.n_clicks"],
+                "changedPropIds": ["workspace-members-save.n_clicks"],
             },
             headers=csrf_headers(self.client),
         )

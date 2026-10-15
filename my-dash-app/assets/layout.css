@@ -335,7 +335,18 @@ body.sidebar-collapsed .sidebar-status {
   }
 }
 
-/* Compact read-only workspace identity. */
+/* Read-only workspace identity: retain the full name at every length. */
+.workspace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+.workspace-heading .eyebrow {
+  margin: 0 12px;
+}
 .workspace-card {
   padding: 12px;
   gap: 8px;
@@ -343,9 +354,9 @@ body.sidebar-collapsed .sidebar-status {
 .workspace-card .workspace-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .sidebar-collapse-toggle {
@@ -368,11 +379,11 @@ body.sidebar-collapsed .sidebar-status {
 }
 @media (min-width: 768px) {
   body.sidebar-collapsed .workspace-card {
-    padding: 0;
-    justify-content: center;
-  }
-  body.sidebar-collapsed .workspace-card .project-icon {
     display: none;
+  }
+  body.sidebar-collapsed .workspace-heading {
+    justify-content: center;
+    margin-bottom: 34px;
   }
   body.sidebar-collapsed .sidebar-collapse-toggle img {
     transform: rotate(180deg);

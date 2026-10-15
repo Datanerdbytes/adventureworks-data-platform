@@ -58,6 +58,26 @@ class FakeGateway:
                 "workspaces": [workspace],
                 "platform_admin": self.token == "platform",
             }
+        if name == "workspace_members_directory":
+            return {
+                "members": [
+                    {
+                        "workspace_id": WORKSPACE["id"],
+                        "workspace_name": WORKSPACE["name"],
+                        "user_id": "44444444-4444-4444-4444-444444444444",
+                        "email": "member@example.test",
+                        "role": "viewer",
+                        "active": True,
+                        "email_confirmed": True,
+                        "created_at": "2026-10-12T00:00:00Z",
+                        "updated_at": "2026-10-12T00:00:00Z",
+                    }
+                ],
+                "total": 1,
+                "offset": 0,
+            }
+        if name == "workspace_governance_activity":
+            return {"events": [], "total": 0, "offset": 0}
         if name == "workspace_admin_data":
             return {
                 "members": [],
