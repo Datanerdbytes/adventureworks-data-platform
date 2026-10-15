@@ -53,3 +53,53 @@ execution. They verify exact table destinations, `WRITE_TRUNCATE`, the existing
 `asia-east2` region, malformed configuration, option types, dry-run isolation,
 nonzero failure exits, and suppression of synthetic secrets in errors. Do not run
 the real pipeline as a validation step.
+
+## Bounded extraction and staged publication
+
+The pipeline requests SQLAlchemy server-side streaming with `stream_results`,
+`yield_per`, and `max_row_buffer`, then consumes `fetchmany` batches. The default
+is 10,000 rows; `--batch-size` (or callable `batch_size`) accepts integers from 1
+through 100,000. Validation occurs before clients and temporary exports, including
+in dry-run mode. A row count limit does not bound bytes in unusually large cells.
+
+Each table is written incrementally into a private temporary Parquet spool. The
+source result and connection close before upload. Only after every batch and the
+Parquet footer succeed does the pipeline submit **one** file load with
+`WRITE_TRUNCATE` and wait for its completion. Extraction, conversion, and disk
+errors submit no replacement for that table. Empty tables still skip upload and
+leave the destination unchanged. Failed final jobs are reported as failed, with a
+nonzero final exit; earlier successful tables are not rolled back.
+
+Schema comes from PostgreSQL column metadata, not the first batch. Nullable
+integers and booleans, dates, timestamps (including UTC-normalized timezone-aware
+values), times without timezones, strings, binary values, and UUIDs have explicit
+Arrow types. The file load supplies an explicit BigQuery schema derived from
+the closed spool metadata, retaining naive timestamps as `DATETIME` and
+timezone-aware timestamps as `TIMESTAMP` rather than relying on Parquet
+autodetection. Unsupported source types fail the table safely before publication.
+Numeric/Decimal values intentionally remain float64, preserving the prior
+pipeline's Decimal-to-float conversion and its precision limitation. This change
+does not introduce a lossless financial export. The typed nullable integer schema
+also avoids pandas' incidental integer-to-float inference when a column has nulls.
+
+Disk usage grows with the size of one table; plan temporary storage accordingly
+(`TMPDIR` selects the standard Python temporary location). Disk exhaustion while
+writing batches or the footer fails the table before upload. Row data is bounded
+by batch size, while Parquet row-group metadata grows with batch count. This is
+not a strict constant-memory or production memory-ceiling guarantee.
+
+Results, source connections, writers, temporary exports, the BigQuery client, and
+the engine are closed or removed on success and failure, including BigQuery
+client initialization failure after engine creation. Cleanup errors do not mask
+an earlier operational failure. A temporary export removal failure prints a fixed
+warning requiring operator cleanup, without exposing row data or filesystem
+paths. Abrupt process termination or host failure can leave a spool behind;
+operators should retain normal temporary-directory hygiene.
+
+Offline regression tests read the actual Parquet file at the fake upload
+boundary, verify every row and type across batches (including an all-null first
+batch), reject `fetchall`, and verify batch-reference release, cursor options,
+empty-table behavior, failure publication boundaries, and lifecycle cleanup.
+Synthetic increasing-size memory characterization is documented in
+[the offline benchmark](performance-benchmark.md); it does not establish live
+driver buffering behavior, warehouse performance, or production capacity.
