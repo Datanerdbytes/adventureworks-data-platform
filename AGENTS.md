@@ -34,7 +34,7 @@ Current source structure (large directories and generated artifacts are collapse
 
 ```text
 Postgres-AdventureWorksDW/
-├── .github/workflows/          # Dependency/security audit and automatic PR creation
+├── .github/workflows/          # Dependency/security audit and user-opened PR links
 ├── .pre-commit-config.yaml     # Shared pinned local checks
 ├── .secrets.baseline           # Reviewed secret-scanner false positives
 ├── AGENTS.md
@@ -221,7 +221,7 @@ uv run --locked pre-commit run --all-files
 - The local dependency hook runs only for `pyproject.toml`/`uv.lock` changes and audits locked runtime **and dev** dependencies. CI's existing `audit` job exports `--no-dev` and runs strict pip-audit against locked **production** dependencies; do not add a duplicate dependency audit when extending CI.
 - `.github/workflows/dependency-audit.yml` runs on pull requests and pushes to `integration`/`main`, and Mondays at 09:00 UTC (17:00 Manila), with read-only repository permissions. It is security scanning, not an application deployment or the full pre-commit test suite.
 - **Security CI as of 2026-10-15:** the current branch includes `main` commit `8609251`, with an independent pinned Bandit job alongside pip-audit and matching audit status in both reports. Reuse the existing hook configuration when maintaining the workflow.
-- `.github/workflows/auto-pr.yml` attempts to create a PR into `main` on branch pushes other than `main`/`master`. Check for existing PRs and repository permissions before relying on it. Use pull requests for changes to protected branches; do not rely on rule bypass privileges.
+- `.github/workflows/auto-pr.yml` publishes a compare link into `main` in the Actions run summary on branch pushes other than `main`/`master`. Open the link while signed in and submit the PR as your account; do not recreate bot-authored PRs with `GITHUB_TOKEN`, whose PR workflows require approval and can expire. The link workflow has no token permissions. Existing fork approval policies and the independent audit checks remain in place. See [PR workflow guidance](docs/pull-request-workflow.md). Use pull requests for changes to protected branches; do not rely on rule bypass privileges.
 - Docker builds auth assets in Node 22, installs locked production Python dependencies, then runs Gunicorn as non-root `appuser` on port 8050 with two workers. Runtime secrets are supplied separately; a successful local scan does not establish a successful deployment.
 
 ## 13. Security State & Operational Boundaries

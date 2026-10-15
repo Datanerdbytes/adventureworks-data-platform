@@ -229,6 +229,7 @@ WHERE segment = '{user_segment}'
 
 ### Phase 4: Ongoing
 
+- PR creation uses a user-opened compare link instead of `GITHUB_TOKEN` bot-authored PRs, preventing that specific workflow approval timeout without changing fork approval policies or audit coverage. See [PR workflow guidance](docs/pull-request-workflow.md).
 - ✅ Implemented in `.github/workflows/dependency-audit.yml`: pinned Bandit SAST and locked production dependency scanning with `pip-audit` run as independent jobs on pull requests and pushes to `integration`/`main`, and weekly on Monday at 09:00 UTC. Bandit runs only the shared pre-commit `bandit` hook over all tracked Python files, preserving its medium/high severity and confidence thresholds and exclusions; the dependency audit runs once in its existing job.
 - Conduct periodic penetration testing of the auth flow
 - Review and rotate Supabase anon/publishable keys annually
