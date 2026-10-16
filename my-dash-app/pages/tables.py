@@ -30,6 +30,8 @@ def layout():
                             id="tables-search",
                             type="search",
                             placeholder="Search sample records…",
+                            name="tables-search",
+                            autoComplete="off",
                             debounce=True,
                         ),
                     ),

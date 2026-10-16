@@ -44,12 +44,21 @@ def layout():
 
 def form_field(label, key, help_text, *, required=False, limit=120):
     identifier = f"workspace-create-{key}"
-    properties = dict(id=identifier, value="", maxLength=limit, required=required)
-    control = (
-        dbc.Textarea(**properties, rows=4)
-        if key == "purpose"
-        else dbc.Input(**properties, type="email" if key == "owner" else "text")
-    )
+    base_properties = dict(id=identifier, value="", maxLength=limit, required=required)
+    if key == "purpose":
+        control = dbc.Textarea(**base_properties, rows=4)
+    elif key == "owner":
+        control = dbc.Input(
+            **base_properties,
+            type="email",
+            autoComplete="email",
+        )
+    else:
+        control = dbc.Input(
+            **base_properties,
+            type="text",
+            autoComplete="off",
+        )
     return html.Div(
         [
             html.Label(

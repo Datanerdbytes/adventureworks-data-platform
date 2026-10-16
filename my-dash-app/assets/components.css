@@ -43,6 +43,10 @@ h2 {
   min-height: 44px;
   white-space: nowrap;
 }
+.button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
 .button:hover {
   background: var(--background);
 }

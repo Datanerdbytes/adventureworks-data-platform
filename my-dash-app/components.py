@@ -4,7 +4,12 @@ from data import grid_options
 
 
 def icon(name):
-    return html.Img(src=f"/assets/icons/{name}.svg", className="icon", alt="")
+    return html.Img(
+        src=f"/assets/icons/{name}.svg",
+        className="icon",
+        alt="",
+        **{"aria-hidden": "true"},
+    )
 
 
 def heading(title, subtitle, action=None):

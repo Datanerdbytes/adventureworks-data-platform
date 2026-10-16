@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
     <title>Account · AdventureWorks Analytics</title>
     <link rel="stylesheet" href="/assets/landing.css" />
     <link rel="stylesheet" href="/assets/auth.css" />
@@ -143,7 +144,7 @@
               minlength="12"
             />
             {% endif %} {% endif %}
-            <button class="button primary" type="submit" disabled>
+            <button class="button primary" type="submit">
               {% if mode == 'signup' %}Create Account{% elif mode == 'recovery'
               %}{{ 'Update Password' if request.args.get('step') == 'update'
               else 'Send Reset Link' }}{% else %}Sign In{% endif %}
