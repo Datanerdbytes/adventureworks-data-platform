@@ -50,6 +50,14 @@ h2 {
 .button:hover {
   background: var(--background);
 }
+body.theme-dark .button {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+body.theme-dark .button:hover {
+  background: #334155;
+}
 .button.primary {
   background: var(--primary);
   color: white;
@@ -86,7 +94,7 @@ h2 {
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--density);
   margin-bottom: 24px;
 }
 .metrics.three {
@@ -119,7 +127,7 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--density);
   margin-bottom: 22px;
 }
 .card-heading a {
@@ -181,14 +189,14 @@ dd {
 }
 .filters {
   display: flex;
-  gap: 20px;
+  gap: var(--density);
   margin-bottom: 24px;
 }
 .field {
   flex: 1;
   max-width: 340px;
   min-width: 0;
-  margin-bottom: 12px;
+  margin-bottom: var(--density);
 }
 .field label {
   display: block;

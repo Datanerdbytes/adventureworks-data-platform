@@ -1,14 +1,49 @@
 * {
   box-sizing: border-box;
 }
+:root {
+  --font-size-base: 16px;
+  --density: 12px;
+}
 body {
   margin: 0;
   background: var(--background);
   color: var(--text);
   font-family: var(--font);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
   scroll-padding-top: 80px;
+}
+body.theme-dark {
+  --background: #0f172a;
+  --surface: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #334155;
+  --primary: #3b82f6;
+  color-scheme: dark;
+}
+html[data-theme="dark"],
+body.theme-dark a {
+  color: #60a5fa;
+}
+body.font-size-small {
+  --font-size-base: 14px;
+}
+body.font-size-large {
+  --font-size-base: 20px;
+}
+body.density-compact {
+  --density: 8px;
+}
+body.density-spacious {
+  --density: 16px;
+}
+body.reduce-motion,
+body.reduce-motion * {
+  animation-duration: 0.01s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01s !important;
 }
 a {
   color: var(--primary);
