@@ -294,3 +294,35 @@ dd {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgb(34 116 181 / 20%);
 }
+
+/* React Select dark mode fixes — ensure dropdown text is visible */
+body.theme-dark .Select-control {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+body.theme-dark .Select-placeholder {
+  color: var(--muted);
+}
+body.theme-dark .Select-value {
+  color: var(--text);
+}
+body.theme-dark .Select-menu-outer {
+  background: var(--surface);
+  border-color: var(--border);
+}
+body.theme-dark .Select-option {
+  background: var(--surface);
+  color: var(--text);
+}
+body.theme-dark .Select-option.is-selected {
+  background: var(--primary);
+  color: #ffffff;
+}
+body.theme-dark .Select-option.is-focused {
+  background: #334155;
+  color: #ffffff;
+}
+body.theme-dark .Select-input input {
+  color: var(--text);
+}
