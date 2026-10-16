@@ -264,6 +264,8 @@ def layout():
                 id="workspace-metric-search",
                 type="search",
                 placeholder="Search metrics…",
+                name="workspace-metric-search",
+                autoComplete="off",
                 value="",
                 debounce=False,
                 className="workspace-search",

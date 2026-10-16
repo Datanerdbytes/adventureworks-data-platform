@@ -251,6 +251,7 @@ def populate(path, offset=None):
                             id="workspace-admin-request-search",
                             type="search",
                             placeholder="Search this batch",
+                            autoComplete="off",
                         ),
                     ),
                     dag.AgGrid(

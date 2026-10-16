@@ -81,6 +81,7 @@ def layout():
                                     type="search",
                                     value="",
                                     maxLength=200,
+                                    autoComplete="off",
                                     debounce=True,
                                     placeholder="Find a member by email",
                                 ),

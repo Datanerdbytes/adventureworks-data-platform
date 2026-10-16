@@ -101,7 +101,9 @@ def layout():
                                         html.Div(
                                             [
                                                 html.Span(
-                                                    "Chart type", className="muted"
+                                                    "Chart type",
+                                                    className="muted",
+                                                    id="executive-chart-type-label",
                                                 ),
                                                 dcc.RadioItems(
                                                     id="executive-chart-type",
@@ -121,6 +123,9 @@ def layout():
                                                 ),
                                             ],
                                             className="chart-type-options",
+                                            **{
+                                                "aria-labelledby": "executive-chart-type-label"
+                                            },
                                         ),
                                     ],
                                     className="chart-type-menu",
@@ -144,7 +149,9 @@ def layout():
                                         html.Div(
                                             [
                                                 html.Span(
-                                                    "Chart type", className="muted"
+                                                    "Chart type",
+                                                    className="muted",
+                                                    id="executive-breakdown-type-label",
                                                 ),
                                                 dcc.RadioItems(
                                                     id="executive-breakdown-type",
@@ -168,6 +175,9 @@ def layout():
                                                 ),
                                             ],
                                             className="chart-type-options",
+                                            **{
+                                                "aria-labelledby": "executive-breakdown-type-label"
+                                            },
                                         ),
                                     ],
                                     className="chart-type-menu",
