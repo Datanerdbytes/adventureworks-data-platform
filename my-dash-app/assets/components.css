@@ -117,6 +117,7 @@ body.theme-dark .button:hover {
   font-size: 11px;
 }
 .card {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 22px;

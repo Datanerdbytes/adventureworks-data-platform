@@ -155,7 +155,7 @@ input:focus-visible {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 34px;
@@ -237,7 +237,7 @@ input:focus-visible {
   margin-bottom: 18px;
 }
 .page-surface {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 30px;
@@ -278,7 +278,7 @@ body.sidebar-collapsed .sidebar-status {
   top: -70px;
   left: 20px;
   z-index: 100;
-  background: white;
+  background: var(--surface);
   padding: 10px;
 }
 .skip-link:focus {
