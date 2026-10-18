@@ -74,6 +74,7 @@ class WorkspaceMembersTests(unittest.TestCase):
                 "active",
                 0,
                 0,
+                None,
                 {"offset": 30},
             )
         g.governance.rpc.assert_called_once_with(
@@ -99,12 +100,13 @@ class WorkspaceMembersTests(unittest.TestCase):
                 workspace_members.ALL,
                 0,
                 1,
+                None,
                 {"offset": 10, "total": 24},
             )
         self.assertEqual(g.governance.rpc.call_args.kwargs["p_offset"], 20)
         with self.assertRaises(Forbidden):
             workspace_members.load_members(
-                workspace_members.PATH, "foreign", "", "owner", "active", 0, 0, {}
+                workspace_members.PATH, "foreign", "", "owner", "active", 0, 0, None, {}
             )
         with self.assertRaises(BadRequest):
             workspace_members.load_members(
@@ -115,6 +117,7 @@ class WorkspaceMembersTests(unittest.TestCase):
                 "active",
                 0,
                 0,
+                None,
                 {},
             )
 
@@ -132,6 +135,7 @@ class WorkspaceMembersTests(unittest.TestCase):
                 workspace_members.ALL,
                 0,
                 0,
+                None,
                 {},
             )
             self.assertEqual(empty[0], [])
@@ -147,6 +151,7 @@ class WorkspaceMembersTests(unittest.TestCase):
                 workspace_members.ALL,
                 0,
                 0,
+                None,
                 {},
             )
             self.assertEqual(failure[0:2], ([], []))
@@ -206,7 +211,10 @@ class WorkspaceMembersTests(unittest.TestCase):
             p_role="viewer",
             p_active=False,
         )
-        self.assertIn("workspace=__all__", result[1])
+        self.assertFalse(result[1])
+        self.assertIsNone(result[2])
+        self.assertIsInstance(result[3], str)
+        self.assertIs(result[5], workspace_members.no_update)
 
     def test_last_owner_error_stays_visible_without_reloading(self):
         self.context()
@@ -218,7 +226,9 @@ class WorkspaceMembersTests(unittest.TestCase):
             1, MEMBER, "viewer", "revoked", WORKSPACE["id"]
         )
         self.assertIn("last active owner", str(result[0]))
-        self.assertIs(result[1], workspace_members.no_update)
+        self.assertTrue(
+            all(value is workspace_members.no_update for value in result[1:])
+        )
 
     def test_activity_uses_its_own_bounded_history_page(self):
         self.context()
@@ -272,3 +282,186 @@ class WorkspaceMembersTests(unittest.TestCase):
                 headers=csrf_headers(client),
             )
             self.assertEqual(client.get(workspace_members.PATH).status_code, 403)
+
+
+class MemberSaveRefreshTests(unittest.TestCase):
+    context = WorkspaceMembersTests.context
+
+    def test_workspace_query_layout_and_page_routing_remain_renderable(self):
+        self.context()
+        content = workspace_members.layout(workspace=WORKSPACE["id"])
+        self.assertIn("Members", str(content))
+        g.governance.rpc.assert_not_called()
+
+        with (
+            patch.dict(app.server.config, CONFIG),
+            patch.dict(
+                app.server.extensions, {"supabase_gateway_factory": FakeGateway}
+            ),
+        ):
+            app.server.extensions["auth_limiter"].reset()
+            client = app.server.test_client()
+            client.set_cookie("aw_access", "approved")
+            path = workspace_members.PATH + "?workspace=" + WORKSPACE["id"]
+            self.assertEqual(client.get(path).status_code, 200)
+            key = next(
+                key for key in app.callback_map if "_pages_content.children" in key
+            )
+            outputs = [
+                {"id": output.component_id, "property": output.component_property}
+                for output in app.callback_map[key]["output"]
+            ]
+            response = client.post(
+                "/_dash-update-component",
+                json={
+                    "output": key,
+                    "outputs": outputs,
+                    "inputs": [
+                        {
+                            "id": "_pages_location",
+                            "property": "pathname",
+                            "value": workspace_members.PATH,
+                        },
+                        {
+                            "id": "_pages_location",
+                            "property": "search",
+                            "value": "?workspace=" + WORKSPACE["id"],
+                        },
+                    ],
+                    "state": [],
+                    "changedPropIds": ["_pages_location.search"],
+                },
+                headers=csrf_headers(client),
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("workspace-members-grid", response.get_data(as_text=True))
+
+    def test_refresh_keeps_filters_and_current_page(self):
+        self.context()
+        g.governance.rpc.return_value = {"members": [MEMBER], "total": 24, "offset": 10}
+        with patch.object(
+            workspace_members, "ctx", Mock(triggered_id="workspace-members-refresh")
+        ):
+            result = workspace_members.load_members(
+                workspace_members.PATH,
+                WORKSPACE["id"],
+                "member@",
+                "owner",
+                "active",
+                0,
+                0,
+                "saved",
+                {"offset": 10, "total": 24},
+            )
+        g.governance.rpc.assert_called_once_with(
+            "workspace_members_directory",
+            p_workspace=WORKSPACE["id"],
+            p_offset=10,
+            p_query="member@",
+            p_role="owner",
+            p_active=True,
+        )
+        self.assertEqual(result[1], [])
+        self.assertEqual(result[6]["offset"], 10)
+
+    def test_refresh_recovers_when_last_row_on_last_page_disappears(self):
+        self.context()
+        g.governance.rpc.side_effect = [
+            {"members": [], "total": 10, "offset": 10},
+            {"members": [MEMBER], "total": 10, "offset": 0},
+        ]
+        with patch.object(
+            workspace_members, "ctx", Mock(triggered_id="workspace-members-refresh")
+        ):
+            result = workspace_members.load_members(
+                workspace_members.PATH,
+                WORKSPACE["id"],
+                "",
+                "owner",
+                "active",
+                0,
+                0,
+                "saved",
+                {"offset": 10, "total": 11},
+            )
+        self.assertEqual(
+            [c.kwargs["p_offset"] for c in g.governance.rpc.call_args_list], [10, 0]
+        )
+        self.assertEqual(result[6]["offset"], 0)
+        self.assertEqual(len(result[0]), 1)
+
+    def test_own_current_workspace_change_reloads_shell_instead_of_stale_admin_page(
+        self,
+    ):
+        self.context()
+        member = {**MEMBER, "user_id": g.auth_user["id"]}
+        g.governance.rpc.return_value = {"members": [member]}
+        result = workspace_members.update_member(
+            1, member, "viewer", "active", WORKSPACE["id"]
+        )
+        self.assertEqual(result[5], "/workspace")
+        self.assertIs(result[3], workspace_members.no_update)
+        self.assertFalse(result[1])
+
+    def test_save_http_response_closes_modal_and_refreshes_without_navigation(self):
+        with (
+            patch.dict(app.server.config, CONFIG),
+            patch.dict(
+                app.server.extensions, {"supabase_gateway_factory": FakeGateway}
+            ),
+        ):
+            app.server.extensions["auth_limiter"].reset()
+            client = app.server.test_client()
+            client.set_cookie("aw_access", "approved")
+            app._setup_server()
+            key = next(
+                key
+                for key, meta in app.callback_map.items()
+                if any(
+                    item["id"] == "workspace-members-save" for item in meta["inputs"]
+                )
+            )
+            outputs = [
+                {"id": output.component_id, "property": output.component_property}
+                for output in app.callback_map[key]["output"]
+            ]
+            body = {
+                "output": key,
+                "outputs": outputs,
+                "inputs": [
+                    {"id": "workspace-members-save", "property": "n_clicks", "value": 1}
+                ],
+                "state": [
+                    {
+                        "id": "workspace-members-target",
+                        "property": "data",
+                        "value": MEMBER,
+                    },
+                    {
+                        "id": "workspace-members-edit-role",
+                        "property": "value",
+                        "value": "viewer",
+                    },
+                    {
+                        "id": "workspace-members-edit-active",
+                        "property": "value",
+                        "value": "revoked",
+                    },
+                    {
+                        "id": "workspace-members-scope",
+                        "property": "value",
+                        "value": WORKSPACE["id"],
+                    },
+                ],
+                "changedPropIds": ["workspace-members-save.n_clicks"],
+            }
+            response = client.post(
+                "/_dash-update-component", json=body, headers=csrf_headers(client)
+            )
+            self.assertEqual(response.status_code, 200)
+            result = response.json["response"]
+            self.assertFalse(result["workspace-members-modal"]["is_open"])
+            self.assertIsNone(result["workspace-members-target"]["data"])
+            self.assertIn("data", result["workspace-members-refresh"])
+            self.assertNotIn("app-location", result)
+            self.assertEqual(client.get(workspace_members.PATH).status_code, 200)

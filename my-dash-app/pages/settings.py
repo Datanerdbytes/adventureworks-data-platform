@@ -1,214 +1,303 @@
+"""Browser-local preferences, grouped into accessible desktop-style settings."""
+
 import dash
+import dash_bootstrap_components as dbc
 from dash import Input, Output, State, callback, clientside_callback, dcc, html
 from dash.exceptions import PreventUpdate
-from components import card, details, field, heading
+from components import details, heading
 
 dash.register_page(__name__, path="/settings", title="Settings | AdventureWorks")
 
 
-def layout():
+def choices(identifier, options):
+    return html.Div(
+        dcc.RadioItems(
+            id=identifier,
+            options=[{"label": label, "value": value} for label, value in options],
+            className="settings-segments",
+        ),
+        role="radiogroup",
+        **{
+            "aria-labelledby": identifier + "-label",
+            "aria-describedby": identifier + "-hint",
+        },
+    )
+
+
+def switch(identifier, title):
+    return dbc.Switch(
+        id=identifier,
+        label=title,
+        value=None,
+        class_name="settings-switch",
+        label_class_name="settings-visually-hidden",
+    )
+
+
+def row(identifier, title, hint, control):
     return html.Div(
         [
-            heading("Settings", "Make this workspace feel like yours."),
             html.Div(
                 [
-                    card(
-                        "Project information",
-                        [details()],
+                    html.P(
+                        title, id=identifier + "-label", className="settings-row-title"
                     ),
-                    card(
-                        "Appearance",
-                        [
-                            html.P(
-                                "Saved in this browser on this device.",
-                                className="muted",
-                            ),
-                            field(
-                                "Color scheme",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Light", "value": "light"},
-                                        {"label": "Dark", "value": "dark"},
-                                        {"label": "System", "value": "system"},
-                                    ],
-                                    id="settings-theme",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "UI density",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Compact", "value": "compact"},
-                                        {
-                                            "label": "Comfortable",
-                                            "value": "comfortable",
-                                        },
-                                        {"label": "Spacious", "value": "spacious"},
-                                    ],
-                                    id="settings-density",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "Font size",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Small", "value": "small"},
-                                        {"label": "Default", "value": "default"},
-                                        {"label": "Large", "value": "large"},
-                                    ],
-                                    id="settings-font-size",
-                                    clearable=False,
-                                ),
-                            ),
-                        ],
-                    ),
-                    card(
-                        "Accessibility",
-                        [
-                            html.P(
-                                "Reduces motion and improves readability.",
-                                className="muted",
-                            ),
-                            field(
-                                "Reduce motion",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Off", "value": "off"},
-                                        {"label": "On", "value": "on"},
-                                        {"label": "System", "value": "system"},
-                                    ],
-                                    id="settings-reduce-motion",
-                                    clearable=False,
-                                ),
-                            ),
-                        ],
-                    ),
-                    card(
-                        "Data preferences",
-                        [
-                            field(
-                                "Default chart type",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Line", "value": "line"},
-                                        {"label": "Bar", "value": "bar"},
-                                        {"label": "Dual axis", "value": "dual"},
-                                    ],
-                                    id="settings-default-chart-type",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "Number formatting",
-                                dcc.Dropdown(
-                                    [
-                                        {
-                                            "label": "Compact (128.4K)",
-                                            "value": "compact",
-                                        },
-                                        {
-                                            "label": "Full precision ($128,400)",
-                                            "value": "full",
-                                        },
-                                    ],
-                                    id="settings-number-format",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "Currency display",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "USD", "value": "USD"},
-                                        {"label": "Local", "value": "local"},
-                                    ],
-                                    id="settings-currency",
-                                    clearable=False,
-                                ),
-                            ),
-                        ],
-                    ),
-                    card(
-                        "Notifications",
-                        [
-                            field(
-                                "Pipeline alerts",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "On", "value": "on"},
-                                        {"label": "Off", "value": "off"},
-                                    ],
-                                    id="settings-pipeline-alerts",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "Status message verbosity",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Brief", "value": "brief"},
-                                        {"label": "Detailed", "value": "detailed"},
-                                    ],
-                                    id="settings-status-verbosity",
-                                    clearable=False,
-                                ),
-                            ),
-                        ],
-                    ),
-                    card(
-                        "Export defaults",
-                        [
-                            field(
-                                "Default export format",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "CSV", "value": "CSV"},
-                                        {"label": "JSON", "value": "JSON"},
-                                    ],
-                                    id="settings-export-format",
-                                    clearable=False,
-                                ),
-                            ),
-                            field(
-                                "Include filters in filename",
-                                dcc.Dropdown(
-                                    [
-                                        {"label": "Off", "value": "off"},
-                                        {"label": "On", "value": "on"},
-                                    ],
-                                    id="settings-include-filters",
-                                    clearable=False,
-                                ),
-                            ),
-                        ],
-                    ),
-                    card(
-                        "Display preferences",
-                        [
-                            field(
-                                "Rows per table page",
-                                dcc.Dropdown(
-                                    [10, 20, 50],
-                                    id="settings-page-size",
-                                    clearable=False,
-                                ),
-                            ),
-                            html.Button(
-                                "Toggle sidebar collapse",
-                                id="settings-collapse",
-                                className="button",
-                            ),
-                            html.P(
-                                id="settings-status", role="status", className="muted"
-                            ),
-                        ],
+                    html.P(
+                        hint, id=identifier + "-hint", className="settings-row-hint"
                     ),
                 ],
-                className="settings-grid",
+                className="settings-row-copy",
             ),
-        ]
+            html.Div(control, className="settings-row-control"),
+        ],
+        className="settings-row",
+    )
+
+
+def group(identifier, title, description, rows):
+    return html.Section(
+        [
+            html.Div(
+                [html.H2(title, id=identifier + "-heading"), html.P(description)],
+                className="settings-group-heading",
+            ),
+            dbc.Card(rows, class_name="settings-group-card"),
+        ],
+        id=identifier,
+        className="settings-group",
+        **{"aria-labelledby": identifier + "-heading"},
+    )
+
+
+def option_row(identifier, title, hint, options):
+    return row(identifier, title, hint, choices(identifier, options))
+
+
+def layout(**_query):
+    sections = [
+        ("appearance", "Appearance"),
+        ("display", "Layout & tables"),
+        ("accessibility", "Accessibility"),
+        ("data", "Data & exports"),
+        ("notifications", "Notifications"),
+        ("about", "About"),
+    ]
+    return html.Div(
+        [
+            heading(
+                "Settings",
+                "Personalize your workspace. Changes are saved automatically in this browser.",
+            ),
+            html.Div(
+                [
+                    html.Nav(
+                        [
+                            html.P("Preferences", className="settings-nav-label"),
+                            *[
+                                html.A(
+                                    label,
+                                    href="#settings-section-" + key,
+                                    className="settings-section-link",
+                                )
+                                for key, label in sections
+                            ],
+                        ],
+                        className="settings-section-nav",
+                        **{"aria-label": "Settings sections"},
+                    ),
+                    html.Div(
+                        [
+                            group(
+                                "settings-section-appearance",
+                                "Appearance",
+                                "Choose how your workspace looks.",
+                                [
+                                    option_row(
+                                        "settings-theme",
+                                        "Color scheme",
+                                        "System follows your device appearance. Light is the default.",
+                                        [
+                                            ("Light", "light"),
+                                            ("Dark", "dark"),
+                                            ("System", "system"),
+                                        ],
+                                    ),
+                                    option_row(
+                                        "settings-density",
+                                        "UI density",
+                                        "Adjust spacing between controls and content.",
+                                        [
+                                            ("Compact", "compact"),
+                                            ("Comfortable", "comfortable"),
+                                            ("Spacious", "spacious"),
+                                        ],
+                                    ),
+                                    option_row(
+                                        "settings-font-size",
+                                        "Text size",
+                                        "Set the base text size for the workspace.",
+                                        [
+                                            ("Small", "small"),
+                                            ("Default", "default"),
+                                            ("Large", "large"),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            group(
+                                "settings-section-display",
+                                "Layout & tables",
+                                "Keep navigation and table views comfortable.",
+                                [
+                                    row(
+                                        "settings-collapse",
+                                        "Collapse sidebar",
+                                        "Show a compact navigation rail on desktop.",
+                                        switch("settings-collapse", "Collapse sidebar"),
+                                    ),
+                                    option_row(
+                                        "settings-page-size",
+                                        "Rows per table page",
+                                        "Applies to tables that support this preference. Member directory pages stay at 10 rows.",
+                                        [("10", 10), ("20", 20), ("50", 50)],
+                                    ),
+                                    html.P(
+                                        id="settings-status",
+                                        role="status",
+                                        className="settings-save-status",
+                                    ),
+                                ],
+                            ),
+                            group(
+                                "settings-section-accessibility",
+                                "Accessibility",
+                                "Make motion and interactions easier to follow.",
+                                [
+                                    option_row(
+                                        "settings-reduce-motion",
+                                        "Reduce motion",
+                                        "Limit animations, or follow your device's reduced-motion setting.",
+                                        [
+                                            ("Off", "off"),
+                                            ("On", "on"),
+                                            ("System", "system"),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Section(
+                                [
+                                    html.Div(
+                                        [
+                                            html.H2(
+                                                "Data & exports",
+                                                id="settings-section-data-heading",
+                                            ),
+                                            html.P(
+                                                "These preferences are saved for future support. Reports and exports currently use their own controls."
+                                            ),
+                                        ],
+                                        className="settings-group-heading",
+                                    ),
+                                    dbc.Card(
+                                        [
+                                            option_row(
+                                                "settings-default-chart-type",
+                                                "Default chart type",
+                                                "Preferred starting view for charts.",
+                                                [
+                                                    ("Line", "line"),
+                                                    ("Bar", "bar"),
+                                                    ("Dual axis", "dual"),
+                                                ],
+                                            ),
+                                            option_row(
+                                                "settings-number-format",
+                                                "Number formatting",
+                                                "Compact: 128.4K · Full: 128,400.",
+                                                [
+                                                    ("Compact", "compact"),
+                                                    ("Full", "full"),
+                                                ],
+                                            ),
+                                            option_row(
+                                                "settings-currency",
+                                                "Currency display",
+                                                "Preferred currency presentation. Warehouse amounts are USD.",
+                                                [("USD", "USD"), ("Local", "local")],
+                                            ),
+                                        ],
+                                        class_name="settings-group-card",
+                                    ),
+                                    html.H3(
+                                        "Export defaults",
+                                        className="settings-subheading",
+                                    ),
+                                    dbc.Card(
+                                        [
+                                            option_row(
+                                                "settings-export-format",
+                                                "File format",
+                                                "Preferred format for downloads.",
+                                                [("CSV", "CSV"), ("JSON", "JSON")],
+                                            ),
+                                            row(
+                                                "settings-include-filters",
+                                                "Include filters in filenames",
+                                                "Add the selected filters to downloaded filenames.",
+                                                switch(
+                                                    "settings-include-filters",
+                                                    "Include filters in filenames",
+                                                ),
+                                            ),
+                                        ],
+                                        class_name="settings-group-card",
+                                    ),
+                                ],
+                                id="settings-section-data",
+                                className="settings-group",
+                                **{"aria-labelledby": "settings-section-data-heading"},
+                            ),
+                            group(
+                                "settings-section-notifications",
+                                "Notifications",
+                                "Saved preferences only. Demo monitoring does not send alerts; report messages currently use a fixed level of detail.",
+                                [
+                                    row(
+                                        "settings-pipeline-alerts",
+                                        "Pipeline alerts",
+                                        "Your preference for pipeline notifications.",
+                                        switch(
+                                            "settings-pipeline-alerts",
+                                            "Pipeline alerts",
+                                        ),
+                                    ),
+                                    option_row(
+                                        "settings-status-verbosity",
+                                        "Message detail",
+                                        "Preferred level of explanation in status messages.",
+                                        [("Brief", "brief"), ("Detailed", "detailed")],
+                                    ),
+                                ],
+                            ),
+                            group(
+                                "settings-section-about",
+                                "About",
+                                "Information about the bundled sample data.",
+                                [
+                                    html.Div(
+                                        details(), className="settings-project-details"
+                                    )
+                                ],
+                            ),
+                        ],
+                        className="settings-section-content",
+                    ),
+                ],
+                className="settings-workspace",
+            ),
+        ],
+        className="settings-page",
     )
 
 
@@ -240,10 +329,10 @@ def hydrate_all(path, preferences):
         prefs.get("defaultChartType", "line"),
         prefs.get("numberFormat", "compact"),
         prefs.get("currency", "USD"),
-        prefs.get("pipelineAlerts", "on"),
+        prefs.get("pipelineAlerts", "on") == "on",
         prefs.get("statusVerbosity", "brief"),
         prefs.get("exportFormat", "CSV"),
-        prefs.get("includeFilters", "off"),
+        prefs.get("includeFilters", "off") == "on",
         prefs.get("pageSize", 10),
     )
 
@@ -253,50 +342,20 @@ clientside_callback(
     function(theme, density, reduceMotion, fontSize, defaultChartType, numberFormat,
              currency, pipelineAlerts, statusVerbosity, exportFormat, includeFilters,
              pageSize, current) {
-        var body = document.body;
-        var html = document.documentElement;
-
-        // Remove all setting classes first
-        body.classList.remove(
-            'theme-dark',
-            'font-size-small',
-            'font-size-large',
-            'density-compact',
-            'density-spacious',
-            'reduce-motion'
-        );
-        html.removeAttribute('data-theme');
-
-        // Apply theme
-        var isDark =
-            theme === 'dark' ||
-            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (isDark) {
-            body.classList.add('theme-dark');
-            html.setAttribute('data-theme', 'dark');
-            var meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute('content', '#0F172A');
-        } else {
-            var meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute('content', '#fcfdff');
+        // Wait for the settings hydration callback before saving anything.
+        if ([theme, density, reduceMotion, fontSize, defaultChartType, numberFormat,
+             currency, pipelineAlerts, statusVerbosity, exportFormat, includeFilters,
+             pageSize].some(value => value == null)) {
+            return window.dash_clientside.no_update;
         }
 
-        // Apply font size
-        if (fontSize === 'small') body.classList.add('font-size-small');
-        if (fontSize === 'large') body.classList.add('font-size-large');
-
-        // Apply density
-        if (density === 'compact') body.classList.add('density-compact');
-        if (density === 'spacious') body.classList.add('density-spacious');
-
-        // Apply reduce motion
-        var isReduceMotion =
-            reduceMotion === 'on' ||
-            (reduceMotion === 'system' &&
-                window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-        if (isReduceMotion) body.classList.add('reduce-motion');
-
-        return {
+        var defaults = {
+            theme: 'light', density: 'comfortable', reduceMotion: 'off',
+            fontSize: 'default', defaultChartType: 'line', numberFormat: 'compact',
+            currency: 'USD', pipelineAlerts: 'on', statusVerbosity: 'brief',
+            exportFormat: 'CSV', includeFilters: 'off', pageSize: 10
+        };
+        var next = {
             ...(current || {}),
             theme: theme,
             density: density,
@@ -305,12 +364,18 @@ clientside_callback(
             defaultChartType: defaultChartType,
             numberFormat: numberFormat,
             currency: currency,
-            pipelineAlerts: pipelineAlerts,
+            pipelineAlerts: pipelineAlerts ? "on" : "off",
             statusVerbosity: statusVerbosity,
             exportFormat: exportFormat,
-            includeFilters: includeFilters,
+            includeFilters: includeFilters ? "on" : "off",
             pageSize: pageSize,
         };
+        // Hydrating the controls must not write defaults into browser storage.
+        if (Object.keys(defaults).every(key =>
+            next[key] === ((current || {})[key] ?? defaults[key]))) {
+            return window.dash_clientside.no_update;
+        }
+        return next;
     }
     """,
     Output("display-preferences", "data"),
@@ -331,19 +396,30 @@ clientside_callback(
 
 
 clientside_callback(
-    """function(prefs) {return 'Tables show ' + ((prefs || {}).pageSize || 10) + ' rows per page.';}""",
+    """function(prefs) {return 'Default table page size: ' + ((prefs || {}).pageSize || 10) + ' rows.';}""",
     Output("settings-status", "children"),
     Input("display-preferences", "data"),
 )
 
 
 @callback(
+    Output("settings-collapse", "value"),
+    Input("app-location", "pathname"),
+    State("sidebar-preference", "data"),
+)
+def hydrate_sidebar(path, collapsed):
+    if path != "/settings":
+        raise PreventUpdate
+    return bool(collapsed)
+
+
+@callback(
     Output("sidebar-preference", "data"),
-    Input("settings-collapse", "n_clicks"),
+    Input("settings-collapse", "value"),
     State("sidebar-preference", "data"),
     prevent_initial_call=True,
 )
-def toggle_sidebar(n_clicks, collapsed):
-    if not n_clicks:
+def toggle_sidebar(collapsed, current):
+    if collapsed is None or collapsed == bool(current):
         raise PreventUpdate
-    return not (collapsed or False)
+    return bool(collapsed)

@@ -126,7 +126,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(len(rows), 7)
         self.assertTrue(all(row["Pipeline"] == "Quality checks" for row in rows))
         self.assertEqual(options["paginationPageSize"], 20)
-        self.assertIn("Refreshed", status)
+        self.assertIn("Synthetic demo runs", status)
         self.assertEqual(len(monitoring.populate("missing", 7, 0, {})[1]), 0)
 
     def test_tables_and_empty_state(self):

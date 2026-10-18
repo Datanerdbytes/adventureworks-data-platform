@@ -50,13 +50,37 @@ h2 {
 .button:hover {
   background: var(--background);
 }
-body.theme-dark .button {
+:root.theme-dark .button {
   background: var(--surface);
   border-color: var(--border);
   color: var(--text);
 }
-body.theme-dark .button:hover {
-  background: #334155;
+:root.theme-dark .button:hover {
+  background: #16223a;
+}
+:root.theme-dark .button.primary:hover {
+  background: #1d4e89;
+}
+:root.theme-dark .badge.demo {
+  background: #16305a;
+  color: #bfdbfe;
+}
+:root.theme-dark .badge.success {
+  background: #13403a;
+  color: #5eead4;
+}
+:root.theme-dark .data-grid {
+  --ag-background-color: var(--surface);
+  --ag-row-hover-color: #16223a;
+}
+:root.theme-dark .field input {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+:root.theme-dark .field .Select.is-focused > .Select-control {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgb(96 165 250 / 25%);
 }
 .button.primary {
   background: var(--primary);
@@ -289,7 +313,94 @@ dd {
   min-height: 0;
   padding: 0;
 }
+/* React Select focuses its tiny search input; show focus on the whole control. */
+.field .Select input:focus-visible {
+  outline: none;
+}
 .field .Select.is-focused > .Select-control {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgb(34 116 181 / 20%);
+}
+
+/* Fallbacks keep asynchronously loaded assets opaque during server updates.
+   Dark components consume semantic tokens; overlays rise above card surfaces. */
+:root.theme-dark .card,
+:root.theme-dark .metric {
+  background: var(--surface-raised, #192339);
+  box-shadow: none;
+}
+:root.theme-dark .button {
+  border-color: var(--control-border, #71839b);
+}
+:root.theme-dark .button.primary {
+  background: var(--primary);
+  color: var(--on-primary, #0c1222);
+  border-color: var(--primary);
+}
+:root.theme-dark .button.primary:hover {
+  background: #93c5fd;
+}
+:root.theme-dark .Select-control,
+:root.theme-dark .Select-menu-outer,
+:root.theme-dark .Select-menu,
+:root.theme-dark .Select-option {
+  background: var(--surface-overlay, #22304a);
+  color: var(--text);
+  border-color: var(--control-border, #71839b);
+}
+:root.theme-dark .Select-placeholder,
+:root.theme-dark
+  .Select.has-value.Select--single
+  > .Select-control
+  .Select-value
+  .Select-value-label,
+:root.theme-dark .Select-input > input {
+  color: var(--text);
+}
+:root.theme-dark .Select-option.is-focused,
+:root.theme-dark .VirtualizedSelectFocusedOption {
+  background: #304565;
+}
+:root.theme-dark .Select-option.is-selected,
+:root.theme-dark .Select-value {
+  color: var(--text);
+  background: #16305a;
+}
+:root.theme-dark .Select-arrow {
+  border-top-color: var(--muted);
+}
+:root.theme-dark .Select-clear-zone {
+  color: var(--muted);
+}
+:root.theme-dark .field input,
+:root.theme-dark .workspace-admin-page .field input,
+:root.theme-dark .workspace-admin-page .field textarea,
+:root.theme-dark .admin-row-select {
+  border-color: var(--control-border, #71839b);
+}
+:root.theme-dark input::placeholder,
+:root.theme-dark textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root.theme-dark .data-grid {
+  --ag-header-foreground-color: var(--text);
+  --ag-odd-row-background-color: var(--surface);
+  --ag-control-panel-background-color: var(--surface-overlay, #22304a);
+  --ag-input-border-color: var(--control-border, #71839b);
+  --ag-input-focus-border-color: var(--primary);
+}
+:root.theme-dark #account-menu,
+:root.theme-dark .chart-type-options,
+:root.theme-dark .admin-edit-modal .modal-content {
+  background: var(--surface-overlay, #22304a);
+}
+
+/* Chart feedback always follows its plot, and occupies no space when unused. */
+.chart-status {
+  margin: 12px 0 0;
+  overflow-wrap: anywhere;
+}
+.chart-status:empty {
+  margin: 0;
 }

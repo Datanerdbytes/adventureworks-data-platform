@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from chart_feedback import status, with_feedback
 import dash
 from dash import Input, Output, callback, dcc, html
 import pandas as pd
@@ -55,9 +55,10 @@ def layout():
                 className="filters",
             ),
             html.Div(id="monitoring-metrics", className="metrics three"),
-            card("Run Duration", [graph("monitoring-chart")]),
+            card(
+                "Run Duration", [graph("monitoring-chart"), status("monitoring-status")]
+            ),
             card("Execution history", [grid("monitoring-grid")]),
-            html.P(id="monitoring-status", role="status", className="muted"),
         ]
     )
 
@@ -74,6 +75,7 @@ def layout():
     Input("monitoring-refresh", "n_clicks"),
     Input("display-preferences", "data"),
 )
+@with_feedback(0, 4)
 def populate(pipeline, days, clicks, preferences):
     try:
         records = runs(pipeline, days)
@@ -108,8 +110,7 @@ def populate(pipeline, days, clicks, preferences):
             records,
             [{"field": key} for key in records[0]],
             metrics,
-            "Demo snapshot · Refreshed "
-            + datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+            "Synthetic demo runs; this chart does not show live pipeline telemetry.",
             grid_options((preferences or {}).get("pageSize", 10)),
         )
     except (ValueError, KeyError, TypeError):

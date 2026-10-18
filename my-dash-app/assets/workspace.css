@@ -1077,3 +1077,31 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+:root.theme-dark .workspace-admin-page .admin-danger {
+  color: #fca5a5;
+  border-color: #5c2a2a;
+  background: #2a0f14;
+}
+:root.theme-dark .workspace-admin-page .admin-danger:hover {
+  background: #3a1418;
+}
+:root.theme-dark .workspace-admin-page .alert-danger {
+  color: #fca5a5;
+  background: #2a0f14;
+}
+:root.theme-dark .workspace-admin-page .alert-success {
+  color: #6ee7b7;
+  background: #0f2418;
+}
+:root.theme-dark .workspace-create-error {
+  color: #fca5a5;
+}
+:root.theme-dark .workspace-create-form .field .is-invalid {
+  border-color: #fca5a5;
+}
+:root.theme-dark .admin-edit-modal .modal-content {
+  box-shadow: 0 16px 48px #00000070;
+}
+:root.theme-dark .admin-edit-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}

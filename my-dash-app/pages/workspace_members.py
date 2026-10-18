@@ -1,8 +1,8 @@
 """Workspace-filtered administrative member directory; writes stay in checked RPCs."""
 
 from datetime import datetime, timezone
-from urllib.parse import parse_qs, urlencode
-from uuid import UUID
+from urllib.parse import parse_qs
+from uuid import UUID, uuid4
 
 import dash
 import dash_ag_grid as dag
@@ -49,7 +49,8 @@ def timestamp(value):
         return "Unavailable"
 
 
-def layout():
+def layout(**_query):
+    # Dash Pages passes URL query parameters here; load_scopes validates scope.
     return html.Div(
         [
             heading(
@@ -265,7 +266,7 @@ def layout():
                 backdrop_class_name="admin-edit-backdrop",
                 fade=False,
             ),
-            dcc.Location(id="workspace-members-reload", refresh=True),
+            dcc.Store(id="workspace-members-refresh"),
         ],
         className="workspace-admin-page workspace-members-page",
     )
@@ -308,9 +309,12 @@ def load_scopes(path, search):
     Input("workspace-members-active", "value"),
     Input("workspace-members-previous", "n_clicks"),
     Input("workspace-members-next", "n_clicks"),
+    Input("workspace-members-refresh", "data"),
     State("workspace-members-page", "data"),
 )
-def load_members(path, scope, query, role, active, previous, next_clicks, page):
+def load_members(
+    path, scope, query, role, active, previous, next_clicks, refresh, page
+):
     if path != PATH or scope is None:
         raise PreventUpdate
     target = resolve_scope(scope)
@@ -324,14 +328,21 @@ def load_members(path, scope, query, role, active, previous, next_clicks, page):
     if not isinstance(query, str) or len(query) > 200:
         abort(400)
     offset = 0
-    if ctx.triggered_id in ("workspace-members-previous", "workspace-members-next"):
+    if ctx.triggered_id in (
+        "workspace-members-previous",
+        "workspace-members-next",
+        "workspace-members-refresh",
+    ):
         try:
             offset = int((page or {}).get("offset", 0))
         except (ValueError, TypeError):
             abort(400)
-        offset += (
-            PAGE_SIZE if ctx.triggered_id == "workspace-members-next" else -PAGE_SIZE
-        )
+        if ctx.triggered_id != "workspace-members-refresh":
+            offset += (
+                PAGE_SIZE
+                if ctx.triggered_id == "workspace-members-next"
+                else -PAGE_SIZE
+            )
         offset = max(0, min(offset, 100000))
     try:
         data = g.governance.rpc(
@@ -342,6 +353,15 @@ def load_members(path, scope, query, role, active, previous, next_clicks, page):
             p_role=None if role == ALL else role,
             p_active=None if active == ALL else active == "active",
         )
+        if data["offset"] and data["offset"] >= data["total"]:
+            data = g.governance.rpc(
+                "workspace_members_directory",
+                p_workspace=target,
+                p_offset=max(0, ((data["total"] - 1) // PAGE_SIZE) * PAGE_SIZE),
+                p_query=query.strip(),
+                p_role=None if role == ALL else role,
+                p_active=None if active == ALL else active == "active",
+            )
         members, total, offset = data["members"], data["total"], data["offset"]
         rows = [
             {
@@ -522,7 +542,11 @@ def open_member(view, cancel, rows, scope):
 
 @callback(
     Output("workspace-members-edit-status", "children", allow_duplicate=True),
-    Output("workspace-members-reload", "href"),
+    Output("workspace-members-modal", "is_open", allow_duplicate=True),
+    Output("workspace-members-target", "data", allow_duplicate=True),
+    Output("workspace-members-refresh", "data"),
+    Output("workspace-members-status", "children"),
+    Output("app-location", "href"),
     Input("workspace-members-save", "n_clicks"),
     State("workspace-members-target", "data"),
     State("workspace-members-edit-role", "value", allow_optional=True),
@@ -554,10 +578,19 @@ def update_member(clicks, target, role, active, scope):
             p_role=role,
             p_active=active == "active",
         )
-        return dbc.Alert(
-            "Member updated. Refreshing access…", color="success"
-        ), PATH + "?" + urlencode({"workspace": scope})
+        own_current_access = (
+            member["user_id"] == g.auth_user["id"]
+            and member["workspace_id"] == g.workspace["id"]
+        )
+        return (
+            "",
+            False,
+            None,
+            no_update if own_current_access else str(uuid4()),
+            dbc.Alert("Member updated.", color="success"),
+            "/workspace" if own_current_access else no_update,
+        )
     except GovernanceError as error:
         if error.status in (401, 403, 503):
             abort(error.status)
-        return dbc.Alert(str(error), color="danger"), no_update
+        return (dbc.Alert(str(error), color="danger"), *([no_update] * 5))

@@ -84,16 +84,25 @@ class RevenueKpiTests(unittest.TestCase):
         for menu, expected in (
             (
                 "executive-chart-type",
-                {"executive-primary.figure", "executive-chart-title.children"},
+                {
+                    "executive-primary.figure",
+                    "executive-primary-status.children",
+                    "executive-chart-title.children",
+                },
             ),
             (
                 "executive-breakdown-type",
-                {"executive-secondary.figure", "executive-breakdown-title.children"},
+                {
+                    "executive-secondary.figure",
+                    "executive-secondary-status.children",
+                    "executive-breakdown-title.children",
+                },
             ),
         ):
             triggered = {
-                output
+                part
                 for output, metadata in callbacks.items()
+                for part in output.strip(".").split("...")
                 if any(item["id"] == menu for item in metadata["inputs"])
             }
             self.assertEqual(triggered, expected)
@@ -109,7 +118,12 @@ class RevenueKpiTests(unittest.TestCase):
                         "subcategory",
                     )
                 }
-                <= {item["id"] for item in callbacks[output]["inputs"]}
+                <= {
+                    item["id"]
+                    for item in next(
+                        metadata for key, metadata in callbacks.items() if output in key
+                    )["inputs"]
+                }
             )
 
     def test_each_kpi_has_its_own_loading_target(self):

@@ -91,11 +91,11 @@ class LeaderboardTests(unittest.TestCase):
             self.assertEqual(list(figure.layout.yaxis.categoryarray), ["B", "A"])
             self.assertEqual(figure.data[0].customdata[0][0], "$1,200.25")
             query.return_value = []
-            figure, _ = populate_leaderboard(CATALOG, *[ALL] * 5)
-            self.assertIn("No reseller sales", figure.layout.annotations[0].text)
+            figure, status = populate_leaderboard(CATALOG, *[ALL] * 5)
+            self.assertIn("No reseller sales", status)
+            self.assertFalse(figure.layout.annotations)
             query.side_effect = RuntimeError("private diagnostic")
             figure, status = populate_leaderboard(CATALOG, *[ALL] * 5)
-            self.assertEqual(
-                figure.layout.annotations[0].text, "Leaderboard unavailable"
-            )
+            self.assertIn("Unable to load top resellers", status)
+            self.assertFalse(figure.layout.annotations)
             self.assertNotIn("private diagnostic", status)

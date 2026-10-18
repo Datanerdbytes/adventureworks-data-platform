@@ -19,3 +19,7 @@ Provider artwork is stored locally to avoid external image requests:
   (official Google G PNG, unchanged).
 - GitHub: https://brand.github.com/foundations/logo
   (official GitHub Invertocat Black SVG, unchanged).
+
+Successful email/password signup clears both fields while keeping the email
+confirmation and workspace-approval guidance visible. Failed signup retains the
+editable values; signup never creates an application session.

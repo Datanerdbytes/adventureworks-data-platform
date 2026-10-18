@@ -32,3 +32,14 @@ export function loginNotice(params) {
     return "Your account has no active workspace access. Contact the workspace Owner or Admin.";
   return "";
 }
+
+export async function submitRegistration(client, form, credentials) {
+  const { error } = await client.auth.signUp(credentials);
+  if (error) throw error;
+  // Clear only after the provider accepts registration, keeping failures editable.
+  form.reset();
+  for (const name of ["email", "password"]) {
+    const field = form.elements.namedItem(name);
+    if (field) field.value = "";
+  }
+}

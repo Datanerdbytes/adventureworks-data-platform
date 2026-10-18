@@ -1,5 +1,6 @@
 """Wholesale account KPI with warehouse filters and remaining sample metrics."""
 
+from chart_feedback import status, with_feedback
 from decimal import Decimal
 import os
 import re
@@ -505,6 +506,7 @@ def leaderboard_figure(rows=None, message="No reseller sales match these filters
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 1)
 def populate_leaderboard(catalog, year, quarter, channel, category, subcategory):
     if catalog is None:
         return leaderboard_figure(message="Waiting for warehouse filters"), ""
@@ -519,7 +521,7 @@ def populate_leaderboard(catalog, year, quarter, channel, category, subcategory)
         )
         return (
             leaderboard_figure(rows),
-            "Warehouse data · Top 10 by reseller revenue · USD",
+            "Top 10 resellers by filtered revenue · USD",
         )
     except PreventUpdate:
         raise
@@ -535,7 +537,7 @@ def secondary_chart_card():
         html.Span("Wholesale Product Mix", id="wholesale-secondary-title"),
         [
             graph("wholesale-secondary"),
-            html.P(id="wholesale-secondary-status", role="status", className="muted"),
+            status("wholesale-secondary-status"),
         ],
         html.Details(
             [
@@ -617,6 +619,7 @@ def reseller_scatter_figure(rows):
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 2)
 def populate_secondary(
     chart_type, catalog, year, quarter, channel, category, subcategory
 ):

@@ -107,3 +107,70 @@ test("revoked access is distinct from pending approval", () => {
   assert.match(message, /Owner or Admin/);
   assert.doesNotMatch(message, /awaiting/);
 });
+
+test("signup clears both fields only after the provider accepts registration", async () => {
+  const { submitRegistration } = await import("./registration.js");
+  const email = { value: "signup@example.test" };
+  const password = { value: "synthetic-registration-password" };
+  let resets = 0;
+  const form = {
+    reset() {
+      resets++;
+    },
+    elements: { namedItem: (name) => ({ email, password })[name] },
+  };
+  let finish;
+  let received;
+  const client = {
+    auth: {
+      signUp: (credentials) => {
+        received = credentials;
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+    },
+  };
+  const credentials = {
+    email: email.value,
+    password: password.value,
+    options: { data: { workspace_registration_code: "synthetic" } },
+  };
+  const pending = submitRegistration(client, form, credentials);
+  assert.equal(resets, 0);
+  assert.equal(email.value, credentials.email);
+  assert.equal(password.value, credentials.password);
+  finish({ error: null });
+  await pending;
+  assert.equal(resets, 1);
+  assert.equal(email.value, "");
+  assert.equal(password.value, "");
+  assert.deepEqual(received, credentials);
+});
+
+test("signup failure preserves the editable fields and propagates the error", async () => {
+  const { submitRegistration } = await import("./registration.js");
+  let resets = 0;
+  const form = {
+    reset() {
+      resets++;
+    },
+  };
+  for (const client of [
+    {
+      auth: {
+        signUp: async () => ({ error: new Error("registration rejected") }),
+      },
+    },
+    {
+      auth: {
+        signUp: async () => {
+          throw new Error("network unavailable");
+        },
+      },
+    },
+  ]) {
+    await assert.rejects(submitRegistration(client, form, {}));
+    assert.equal(resets, 0);
+  }
+});
