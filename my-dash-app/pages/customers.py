@@ -1,5 +1,6 @@
 """Warehouse customer KPIs, demographic charts, and regional ledger."""
 
+from chart_feedback import status, with_feedback
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, callback, dcc, html, ctx, no_update
@@ -72,9 +73,6 @@ def layout():
         ),
         html.P(id=f"{PREFIX}-status", className="muted", role="status"),
     ]
-    page.children.insert(
-        -2, html.P(id="customers-chart-status", className="muted", role="status")
-    )
     return page
 
 
@@ -330,7 +328,7 @@ def region_chart_card():
                 hidden=True,
             ),
             html.Div(plot, className="customer-chart-frame"),
-            html.P(id="customers-map-status", role="status", className="muted"),
+            status("customers-map-status"),
         ],
         html.Details(
             [
@@ -395,6 +393,7 @@ def navigate_map(
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 4)
 def populate_region(
     chart_type, group, catalog, year, quarter, channel, category, subcategory
 ):
@@ -478,7 +477,10 @@ def lifecycle_chart_card():
     plot.parent_className = "customer-chart-loading"
     return card(
         html.Span("Retail Customer Age Distribution", id="customers-secondary-title"),
-        [html.Div(plot, className="customer-chart-frame")],
+        [
+            html.Div(plot, className="customer-chart-frame"),
+            status("customers-chart-status"),
+        ],
         html.Details(
             [
                 html.Summary(
@@ -526,6 +528,7 @@ def lifecycle_chart_card():
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 1)
 def populate_customer_chart(
     chart_type, catalog, year, quarter, channel, category, subcategory
 ):
@@ -639,7 +642,7 @@ def populate_segment_revenue(
         normalized = [None if v == ALL else v for v in validated]
         rows = load_customer_segment_revenue(*location, dimension, *normalized)
         note = (
-            "Selected-period retail revenue · USD"
+            "Purchasing retail customers only; reseller accounts excluded · USD"
             if rows
             else "No retail revenue matches these filters. Reseller accounts do not have retail customer demographics."
         )

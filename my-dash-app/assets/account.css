@@ -126,3 +126,19 @@ body.sidebar-collapsed .account-chevron {
     display: flex;
   }
 }
+:root.theme-dark .account-toggle:hover,
+:root.theme-dark .account-toggle[aria-expanded="true"] {
+  background: #16223a;
+}
+:root.theme-dark .account-avatar {
+  background: #16305a;
+  border-color: #1e293b;
+  color: #bfdbfe;
+}
+:root.theme-dark #account-menu {
+  background: var(--surface);
+  box-shadow: 0 8px 30px #00000050;
+}
+:root.theme-dark .account-option:hover {
+  background: var(--background);
+}

@@ -1,5 +1,7 @@
 """One consistent set of warehouse filters for the executive report."""
 
+from chart_feedback import status, feedback
+
 import logging
 from typing import Any
 import dash
@@ -90,7 +92,10 @@ def layout():
                                 html.Span(
                                     "Revenue By Month", id="executive-chart-title"
                                 ),
-                                [graph("executive-primary")],
+                                [
+                                    graph("executive-primary"),
+                                    status("executive-primary-status"),
+                                ],
                                 html.Details(
                                     [
                                         html.Summary(
@@ -136,7 +141,10 @@ def layout():
                                     "Revenue By Channel",
                                     id="executive-breakdown-title",
                                 ),
-                                [graph("executive-secondary")],
+                                [
+                                    graph("executive-secondary"),
+                                    status("executive-secondary-status"),
+                                ],
                                 html.Details(
                                     [
                                         html.Summary(
@@ -560,15 +568,19 @@ def update_report(
 
 def populate_chart(catalog, filters, chart_type, index):
     if catalog is None:
-        return render_report({"monthly": [], "detail": []})[index]
+        return feedback({}, "Waiting for warehouse filters.")
     try:
         selected = normalize_filters(catalog, *filters)
         values = load_executive_report(*warehouse_location(), *selected)
-        return render_report(
+        figure = render_report(
             values,
             chart_type=chart_type if index == 1 else "line",
             breakdown_type=chart_type if index == 2 else "bar",
         )[index]
+        note = ""
+        if values["monthly"] and index == 1 and chart_type == "dual":
+            note = "Gross profit margin = summed profit / summed revenue; zero-revenue months have no margin."
+        return feedback(figure, note)
     except dash.exceptions.PreventUpdate:
         raise
     except Exception:
@@ -582,11 +594,14 @@ def populate_chart(catalog, filters, chart_type, index):
             yref="paper",
             showarrow=False,
         )
-        return figure
+        return feedback(
+            figure, "Chart unavailable. Change a filter or reload to retry."
+        )
 
 
 @callback(
     Output("executive-primary", "figure"),
+    Output("executive-primary-status", "children"),
     Input("executive-filter-catalog", "data"),
     *[Input(f"executive-{name}", "value") for name in FILTERS],
     Input("executive-chart-type", "value"),
@@ -601,6 +616,7 @@ def update_monthly_chart(
 
 @callback(
     Output("executive-secondary", "figure"),
+    Output("executive-secondary-status", "children"),
     Input("executive-filter-catalog", "data"),
     *[Input(f"executive-{name}", "value") for name in FILTERS],
     Input("executive-breakdown-type", "value"),

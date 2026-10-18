@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 from dash import Input, Output, callback, dcc, html
 
+from chart_feedback import status
 from components import card, field, graph, grid, heading, metric
 from data import grid_options
 from theme import TOKENS, style_figure
@@ -168,13 +169,7 @@ def report_layout(kind, sample_filters=True):
                         [
                             graph(f"{kind}-primary"),
                             *(
-                                [
-                                    html.P(
-                                        id="wholesale-leaderboard-status",
-                                        role="status",
-                                        className="muted",
-                                    )
-                                ]
+                                [status("wholesale-leaderboard-status")]
                                 if kind == "wholesale"
                                 else []
                             ),

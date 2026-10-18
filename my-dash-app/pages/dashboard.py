@@ -1,3 +1,4 @@
+from chart_feedback import status, with_feedback
 import dash
 from dash import Input, Output, callback, dcc, html
 import plotly.express as px
@@ -47,6 +48,7 @@ def layout():
                                 "Rows processed · September 30, 2026", className="muted"
                             ),
                             graph("dashboard-activity"),
+                            status("dashboard-status"),
                         ],
                         html.Span("24 hours", className="badge"),
                     ),
@@ -63,7 +65,6 @@ def layout():
                 [html.Div(id="dashboard-runs")],
                 dcc.Link("View monitoring →", href="/monitoring"),
             ),
-            html.P(id="dashboard-status", role="status", className="muted"),
         ]
     )
 
@@ -75,6 +76,7 @@ def layout():
     Output("dashboard-status", "children"),
     Input("app-location", "pathname"),
 )
+@with_feedback(0, 3)
 def populate(path):
     if path != "/dashboard":
         raise dash.exceptions.PreventUpdate

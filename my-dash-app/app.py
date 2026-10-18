@@ -6,7 +6,7 @@ from auth import install_auth
 from components import icon
 from analytics import REPORTS
 from revenue_kpis import init_kpi_cache
-from theme import css_tokens
+from theme import css_tokens, theme_script
 
 server = Flask(__name__)
 install_auth(server)
@@ -36,7 +36,8 @@ def theme_css():
 
 app.index_string = app.index_string.replace(
     "{%css%}",
-    '<link rel="stylesheet" href="/theme.css"><script src="/assets/auth.js"></script>{%css%}',
+    theme_script()
+    + '<link rel="stylesheet" href="/theme.css"><script src="/assets/auth.js"></script>{%css%}',
 )
 
 app.index_string = app.index_string.replace(
@@ -75,6 +76,7 @@ def serve_layout():
                 id="display-preferences", storage_type="local", data={"pageSize": 10}
             ),
             dcc.Store(id="sidebar-preference", storage_type="local", data=False),
+            dcc.Store(id="theme-apply"),
             html.A("Skip to content", href="#main-content", className="skip-link"),
             html.Header(
                 [
@@ -369,6 +371,14 @@ clientside_callback(
     """function(collapsed) {window.awSidebar?.apply(!!collapsed); return !!collapsed;}""",
     Output("sidebar-sync", "children"),
     Input("sidebar-preference", "data"),
+)
+clientside_callback(
+    """function(preferences) {
+        window.awTheme.apply(preferences || {});
+        return preferences || {};
+    }""",
+    Output("theme-apply", "data"),
+    Input("display-preferences", "data"),
 )
 
 if __name__ == "__main__":

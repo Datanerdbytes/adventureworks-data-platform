@@ -1,0 +1,60 @@
+<script>
+  (function () {
+    if (window.awTheme) return;
+    var key = "display-preferences";
+    var system = window.matchMedia("(prefers-color-scheme: dark)");
+    var motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    var preferences = {};
+    function read() {
+      try {
+        return JSON.parse(window.localStorage.getItem(key)) || {};
+      } catch (_) {
+        return {};
+      }
+    }
+    function apply(prefs) {
+      preferences = prefs;
+      var dark =
+        prefs.theme === "dark" || (prefs.theme === "system" && system.matches);
+      var root = document.documentElement;
+      root.classList.toggle("theme-dark", dark);
+      root.classList.toggle("theme-light", !dark);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", dark ? "#0c1222" : "#f5f7fa");
+      if (document.body) {
+        ["small", "large"].forEach(function (size) {
+          document.body.classList.toggle(
+            "font-size-" + size,
+            prefs.fontSize === size,
+          );
+        });
+        ["compact", "spacious"].forEach(function (density) {
+          document.body.classList.toggle(
+            "density-" + density,
+            prefs.density === density,
+          );
+        });
+        document.body.classList.toggle(
+          "reduce-motion",
+          prefs.reduceMotion === "on" ||
+            (prefs.reduceMotion === "system" && motion.matches),
+        );
+      }
+      window.dispatchEvent(new Event("aw-theme-change"));
+    }
+    window.awTheme = { apply: apply };
+    apply(read());
+    system.addEventListener("change", function () {
+      apply(preferences);
+    });
+    motion.addEventListener("change", function () {
+      apply(preferences);
+    });
+    window.addEventListener("storage", function (event) {
+      if (event.key === key || event.key === null) apply(read());
+    });
+    document.addEventListener("DOMContentLoaded", function () {
+      apply(preferences);
+    });
+  })();
+</script>

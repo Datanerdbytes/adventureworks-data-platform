@@ -125,6 +125,12 @@ body.sidebar-collapsed .submenu-toggle {
 .analytics-report .chart-loading {
   height: 340px;
 }
+/* Wholesale figures are 420px tall, including axes and labels. Reserve the
+   same space in both Graph and Loading so card feedback follows the plot. */
+.analytics-report:has(#wholesale-primary) .chart,
+.analytics-report:has(#wholesale-primary) .chart-loading {
+  height: 420px;
+}
 .analytics-report h1 {
   font-size: 26px;
   max-width: 750px;
@@ -389,4 +395,117 @@ body.sidebar-collapsed .submenu-toggle {
   height: 100%;
   width: 100%;
   min-width: 0;
+}
+
+:root.theme-dark .submenu-toggle:hover {
+  background: #16223a;
+}
+:root.theme-dark .subnav-link:hover {
+  background: #16223a;
+}
+:root.theme-dark .subnav-link[aria-current="page"] {
+  color: var(--primary);
+  background: #16305a;
+}
+:root.theme-dark .report-launcher {
+  background: var(--surface);
+  color: var(--text);
+}
+:root.theme-dark .report-launcher:hover {
+  background: #16223a;
+  border-color: #2a3f63;
+}
+:root.theme-dark .chart-type-options {
+  background: var(--surface-overlay);
+  box-shadow: 0 6px 20px #00000060;
+}
+:root.theme-dark .kpi-yoy--positive {
+  color: #6ee7b7;
+  background: #0f2418;
+}
+:root.theme-dark .kpi-yoy--negative {
+  color: #fca5a5;
+  background: #2a0f14;
+}
+:root.theme-dark #executive-detail .ag-row.executive-loss-row {
+  background-color: #2a0f14;
+}
+:root.theme-dark .ag-cell.wholesale-lead-alert,
+:root.theme-dark .ag-cell.executive-profit-loss {
+  color: #fca5a5;
+}
+:root.theme-dark .workspace-sample {
+  background: var(--surface);
+}
+:root.theme-dark .workspace-view-tabs {
+  background: var(--surface);
+}
+:root.theme-dark .workspace-view-tabs label:has(input:checked) {
+  background: var(--background);
+}
+:root.theme-dark .workspace-view {
+  background: var(--surface);
+}
+:root.theme-dark .workspace-view-icon,
+:root.theme-dark .workspace-tag,
+:root.theme-dark .workspace-definition-body code,
+:root.theme-dark .admin-help {
+  background: var(--surface);
+}
+:root.theme-dark .workspace-quick-link {
+  background: var(--surface);
+}
+:root.theme-dark .workspace-quick-link:hover {
+  background: var(--background);
+}
+:root.theme-dark .workspace-search,
+:root.theme-dark .workspace-admin-page .field input,
+:root.theme-dark .workspace-admin-page .field textarea,
+:root.theme-dark .admin-row-select {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--control-border);
+}
+:root.theme-dark .workspace-admin-page .Select-control,
+:root.theme-dark .workspace-admin-page .Select-placeholder,
+:root.theme-dark .workspace-admin-page .Select-value {
+  background: var(--surface);
+  color: var(--text);
+}
+:root.theme-dark .admin-provisioning .accordion-button {
+  background: var(--surface);
+  color: var(--text);
+}
+:root.theme-dark .admin-edit-modal .modal-content {
+  background: var(--surface-overlay);
+  box-shadow: 0 16px 48px #00000070;
+}
+:root.theme-dark .admin-edit-modal .btn-close::before {
+  color: var(--muted);
+}
+:root.theme-dark .admin-backdrop,
+:root.theme-dark .admin-edit-modal .modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+:root.theme-dark .workspace-admin-page .admin-danger {
+  color: #fca5a5;
+  border-color: #5c2a2a;
+  background: #2a0f14;
+}
+:root.theme-dark .workspace-admin-page .admin-danger:hover {
+  background: #3a1418;
+}
+:root.theme-dark .workspace-admin-page .alert-danger {
+  color: #fca5a5;
+  background: #2a0f14;
+}
+:root.theme-dark .workspace-admin-page .alert-success {
+  color: #6ee7b7;
+  background: #0f2418;
+}
+:root.theme-dark .workspace-create-error {
+  color: #fca5a5;
+}
+:root.theme-dark .workspace-create-form .field .is-invalid {
+  border-color: #fca5a5;
 }

@@ -11,6 +11,7 @@ import {
   registrationCallback,
   loginNotice,
   exchangeCallbackCode,
+  submitRegistration,
 } from "./registration.js";
 
 // Install before cookie synchronization and before Dash's renderer starts.
@@ -196,7 +197,7 @@ async function initialize() {
         const email = String(values.get("email") || "").trim();
         const password = String(values.get("password") || "");
         if (mode === "signup") {
-          const { error } = await client.auth.signUp({
+          await submitRegistration(client, form, {
             email,
             password,
             options: {
@@ -205,7 +206,6 @@ async function initialize() {
                 location.origin + "/auth/callback?registration=1",
             },
           });
-          if (error) throw error;
           status(
             "Check your email to confirm your account. Workspace access requires administrator approval.",
           );

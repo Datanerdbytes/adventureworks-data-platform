@@ -4,6 +4,10 @@
   function apply(value) {
     collapsed = value;
     document.body.classList.toggle("sidebar-collapsed", value);
+    // Keep the Settings switch aligned with changes made from the navigation rail.
+    if (document.getElementById("settings-collapse")) {
+      window.dash_clientside?.set_props("settings-collapse", { value });
+    }
     document
       .querySelector("#sidebar-toggle")
       ?.setAttribute("aria-expanded", String(!value));

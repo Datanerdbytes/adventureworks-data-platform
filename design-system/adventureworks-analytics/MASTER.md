@@ -43,3 +43,37 @@ for margin. All-years selections prompt for a year; missing periods and zero
 baselines show neutral states. Direction arrows accompany color. Hover text
 identifies the compared calendar periods and exact values; periods use available
 totals, not an implied matched year-to-date cutoff.
+
+## Dark appearance
+
+Light is the default for new browsers; System follows the device appearance only
+when explicitly selected. Opening Settings never saves or changes appearance.
+The dark appearance adapts the existing console using the installed
+[dark-mode-design-expert](../../.agents/skills/dark-mode-design-expert/SKILL.md)
+from `curiositech/some_claude_skills`. Keep the existing layout and blue/teal identity.
+
+- `theme.py` owns semantic CSS/Plotly tokens: navy background `#0c1222`, surface
+  `#121a2e`, raised cards `#192339`, and overlay menus/modals `#22304a`.
+- Use off-white `#f1f5f9` primary text, `#94a3b8` muted text, brighter blue
+  `#60a5fa` and teal `#2dd4bf`. Dark ink belongs on bright primary buttons.
+- Decorative dividers use `--border`; interactive boundaries use
+  `--control-border` for at least 3:1 contrast against all dark surfaces.
+- Apply browser-local `display-preferences` before CSS on every page shell.
+  Observe system appearance changes only when the preference is System, and
+  synchronize changes across tabs. Explicit Light/Dark overrides the system.
+- Prefer tonal surface elevation for cards, dropdowns and dialogs. Retain visible
+  focus, status labels, chart series distinctions and reduced-motion behavior.
+- Restyle chart layout after render and filter updates, preserving series data,
+  axis ranges, chart choice and zoom. Never run warehouse loaders for theme changes.
+
+## Chart feedback
+
+All chart cards retain a `dcc.Loading` wrapper and a polite, atomic status region
+immediately after the plot. Use `chart_feedback.py` to keep empty/error messages
+in that shared position, clear stale feedback when data returns, and distinguish
+measured zero from unavailable data. Empty status regions occupy no space.
+
+Hide routine successful-load messages. Keep notes that change interpretation,
+including comparison baselines, lifecycle/age dates, top-N limits, retail-only
+scope, map boundaries, and explicit synthetic-data disclosures. Chart changes
+must not add warehouse queries or alter filter/query/cache contracts.

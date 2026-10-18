@@ -1,5 +1,6 @@
 """Warehouse-backed time-series report with shared sales filters."""
 
+from chart_feedback import status, with_feedback
 from decimal import Decimal
 import calendar
 
@@ -395,7 +396,7 @@ def primary_chart_card():
         html.Span("Monthly Revenue Comparison", id="growth-primary-title"),
         [
             graph("growth-primary"),
-            html.P(id="growth-primary-status", role="status", className="muted"),
+            status("growth-primary-status"),
         ],
         html.Details(
             [
@@ -490,6 +491,7 @@ def day_type_figure(rows):
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 2)
 def populate_primary(
     chart_type, catalog, year, quarter, channel, category, subcategory
 ):
@@ -532,7 +534,7 @@ def secondary_chart_card():
         html.Span("Month-Over-Month Revenue Growth", id="growth-secondary-title"),
         [
             graph("growth-secondary"),
-            html.P(id="growth-secondary-status", role="status", className="muted"),
+            status("growth-secondary-status"),
         ],
         html.Details(
             [
@@ -633,6 +635,7 @@ def seasonality_matrix_figure(rows):
     Input(f"{PREFIX}-catalog", "data"),
     *[Input(f"{PREFIX}-{name}", "value") for name in FIELDS],
 )
+@with_feedback(0, 2)
 def populate_secondary(
     chart_type, catalog, year, quarter, channel, category, subcategory
 ):
@@ -677,7 +680,14 @@ def populate_secondary(
             )
         )
         _, second, _, _ = render_growth(values, baseline)
-        return second, title, ""
+        return (
+            second,
+            title,
+            (
+                "Previous calendar month · Missing months and zero/negative baselines have no growth rate. "
+                "Partial months use available sales."
+            ),
+        )
     except PreventUpdate:
         raise
     except Exception:

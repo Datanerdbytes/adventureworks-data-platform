@@ -57,3 +57,9 @@ Viewers only; show higher roles read-only. Preserve the last active Owner guard.
 Stack filters on small screens, keep touch targets at least 44px, and contain
 wide table scrolling within the grid. Clear selection when filters or pages
 change. Show empty and service-failure states without stale member rows.
+
+Successful member edits close the modal and refresh the directory in place,
+preserving its filters and page where possible. Clear row selection and show
+success above the filters. If the last matching row disappears, return to the
+last available page. Changes to the actor's own current-workspace membership
+reload the authorized workspace shell; ordinary edits do not navigate away.

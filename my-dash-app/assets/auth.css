@@ -301,3 +301,44 @@ body.auth-page {
 #auth-startup[hidden] {
   display: none;
 }
+:root.theme-dark .auth-page {
+  --ink: #f1f5f9;
+  --muted: #94a3b8;
+  --blue: #60a5fa;
+  --line: #334155;
+  --auth-hover: #93c5fd;
+  --auth-surface: #121a2e;
+  --auth-field-border: #475569;
+  --auth-error: #fca5a5;
+  --auth-error-background: #2a0f14;
+}
+:root.theme-dark body.auth-page {
+  background:
+    radial-gradient(ellipse at 50% 0, #1e3356, transparent 60%), #0c1222;
+}
+:root.theme-dark .auth-page .login-card {
+  box-shadow: 0 12px 40px #00000060;
+}
+:root.theme-dark .auth-page .auth-provider-button:hover {
+  background: #16223a;
+}
+:root.theme-dark .auth-brand-panel {
+  background: linear-gradient(145deg, #0b2a4a, #13406e);
+}
+:root.theme-dark .auth-brand-panel .auth-brand-name span,
+:root.theme-dark .auth-panel-caption {
+  color: #c7ddea;
+}
+
+:root.theme-dark .auth-page .button.primary,
+:root.theme-dark .auth-page .button.primary:hover {
+  color: #0c1222;
+}
+/* Keep the official black GitHub mark visible without altering the artwork. */
+:root.theme-dark .auth-provider-button img {
+  background: #ffffff;
+  border-radius: 3px;
+}
+:root.theme-dark .auth-brand-panel {
+  color: #f1f5f9;
+}
