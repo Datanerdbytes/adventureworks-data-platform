@@ -21,7 +21,7 @@ are accepted as loader inputs or written to lock names.
 | `growth_kpis`    | Scorecards, day-type sales, seasonality matrix, ledger                                        | Project, analytics dataset, five sales filters                                           |
 | `wholesale_kpis` | Active accounts, revenue, orders, comparison, top resellers, scatter, product mix, operations | Project, analytics dataset, five sales filters; operations also includes staging dataset |
 
-All 21 loaders remain inventoried by their `make_cache_key` attribute, including
+All 21 report loaders remain inventoried by their `make_cache_key` attribute, including
 `_load_executive_report` behind its unchanged public forwarding function. The
 wrapper retains the original signature, `__wrapped__`, and `uncached` attributes.
 Its `make_cache_key(*args, **kwargs)` returns the canonical key directly; this is
@@ -118,3 +118,14 @@ through the derived comparison, and bounded private lock files. Worker barriers,
 events and joins have deadlines. Tests perform no production queries and do not
 clear the application's shared backend. Local tests do not establish live schema,
 production latency/cost/hit rates, multi-container sharing or a memory budget.
+
+## Warehouse table previews
+
+`warehouse_tables.load_table_preview(project, dataset, name)` is the additional
+60-second cached loader for `/tables`. `name` is an allowlisted Products, Customers
+or Sales selection. Tests in `tests/test_warehouse_tables.py` use the real isolated
+cache to verify project, dataset and selection isolation and reuse. Search and
+page size affect only the loaded grid, so they do not belong in its warehouse
+cache identity. Rows are capped at 500 (with one sentinel row queried), queries
+use explicit columns/stable key ordering and a 100 MiB billing ceiling. Workspaces
+continue to share the same analytics dataset.

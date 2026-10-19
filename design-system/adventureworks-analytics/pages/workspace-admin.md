@@ -1,3 +1,5 @@
+> Retired on 2026-10-19. The current account directory follows [User Management](user-management.md). This document records the prior workspace governance design.
+
 # Workspace Administration
 
 Follow MASTER.md and the existing Dash/DBC console styling.

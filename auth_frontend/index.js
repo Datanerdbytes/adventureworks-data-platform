@@ -49,6 +49,17 @@ const disable = (form, value) =>
     b.disabled = value;
   });
 
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-password-toggle]");
+  if (!toggle) return;
+  const field = document.getElementById(toggle.dataset.passwordToggle);
+  if (!field) return;
+  const show = field.type === "password";
+  field.type = show ? "text" : "password";
+  toggle.setAttribute("aria-pressed", String(show));
+  toggle.textContent = show ? "Hide password" : "Show password";
+});
+
 async function initialize() {
   const params =
     mode === "recovery"
@@ -60,35 +71,23 @@ async function initialize() {
     ? "/login?registered=1"
     : "/login";
   const config = await jsonRequest("/auth/config");
-  const registration =
-    mode === "signup"
-      ? await jsonRequest(
-          "/auth/registration" +
-            (params.has("workspace")
-              ? "?workspace=" + encodeURIComponent(params.get("workspace"))
-              : ""),
-        )
-      : null;
-  if (registration)
-    status(
-      "Request access to " +
-        registration.name +
-        ". Verify your email to join the approval queue.",
-    );
-  client = createClient(config.url, config.publicKey, {
-    auth: {
-      flowType: "pkce",
-      detectSessionInUrl: false,
-      persistSession: true,
-      autoRefreshToken: true,
-    },
-  });
+  client =
+    mode === "recovery"
+      ? recoveryEmailClient(createClient, config)
+      : createClient(config.url, config.publicKey, {
+          auth: {
+            flowType: "pkce",
+            detectSessionInUrl: false,
+            persistSession: true,
+            autoRefreshToken: true,
+          },
+        });
   controller = sessionController(client, jsonRequest, () =>
     location.assign(signedOutDestination),
   );
   if (params.has("error"))
     throw new Error(
-      "Sign-in could not be completed. New users must sign up with email first and receive workspace approval. Existing users can retry or use email/password.",
+      "Sign-in could not be completed. New users must sign up with email first and verify their email. Existing users can retry or use email/password.",
     );
   if (mode === "recovery" && params.get("step") === "update") {
     history.replaceState(null, "", "/auth/recovery?step=update");
@@ -105,20 +104,34 @@ async function initialize() {
     }
   } else if (params.has("token_hash")) {
     const type = params.get("type");
-    if (!["signup", "recovery", "email"].includes(type))
+    if (!["signup", "email"].includes(type))
       throw new Error("Unsupported confirmation link.");
     const { error } = await client.auth.verifyOtp({
       token_hash: params.get("token_hash"),
       type,
     });
-    history.replaceState(
-      null,
-      "",
-      location.pathname + (type === "recovery" ? "?step=update" : ""),
-    );
+    history.replaceState(null, "", location.pathname);
     if (error) throw error;
   }
-  client.auth.onAuthStateChange((event) => {
+  client.auth.onAuthStateChange((event, session) => {
+    if (mode === "recovery") {
+      if (
+        recoveryVerified &&
+        (event === "SIGNED_OUT" || session?.user?.id !== recoveryVerified)
+      ) {
+        recoveryVerified = false;
+        document
+          .getElementById("auth-form")
+          ?.querySelector('button[type="submit"]')
+          ?.setAttribute("disabled", "");
+        failure(
+          new Error(
+            "Your recovery session changed or ended. Request a new reset link.",
+          ),
+        );
+      }
+      return;
+    }
     // SDK auth callbacks must return immediately; session reads happen outside the callback.
     if (event === "SIGNED_OUT") {
       setTimeout(
@@ -126,7 +139,7 @@ async function initialize() {
           controller
             .sync()
             .then(() => {
-              if (isDashboard || mode === "pending") location.assign("/login");
+              if (isDashboard) location.assign("/login");
             })
             .catch(failure),
         0,
@@ -142,8 +155,7 @@ async function initialize() {
           controller
             .sync()
             .then((result) => {
-              if (isDashboard && result && !result.approved)
-                location.assign("/auth/access-pending");
+              if (isDashboard && !result) location.assign("/login");
             })
             .catch(failure),
         0,
@@ -201,13 +213,12 @@ async function initialize() {
             email,
             password,
             options: {
-              data: { workspace_registration_code: registration.code },
               emailRedirectTo:
                 location.origin + "/auth/callback?registration=1",
             },
           });
           status(
-            "Check your email to confirm your account. Workspace access requires administrator approval.",
+            "Check your email to confirm your account, then return to sign in.",
           );
         } else if (mode === "recovery" && params.get("step") === "update") {
           await updateRecoveredPassword(
@@ -218,34 +229,52 @@ async function initialize() {
           );
           recoveryVerified = false;
           form.reset();
-          signedOutDestination = "/login?password_reset=1";
-          await controller.signOut();
+          await jsonRequest("/auth/session", { method: "DELETE" });
+          const revoked = await client.auth.signOut({ scope: "global" });
+          if (revoked.error) throw revoked.error;
+          const normal = createClient(config.url, config.publicKey, {
+            auth: { flowType: "pkce", detectSessionInUrl: false },
+          });
+          const cleared = await normal.auth.signOut({ scope: "local" });
+          if (cleared.error) throw cleared.error;
+          location.assign("/login?password_reset=1");
         } else if (mode === "recovery") {
-          const sender = recoveryEmailClient(createClient, config);
+          const sender = client;
           const { error } = await sender.auth.resetPasswordForEmail(email, {
             redirectTo: location.origin + "/auth/recovery?step=update",
           });
           if (error) throw error;
           status(
-            "If the account exists, a recovery email will arrive shortly.",
+            "If the account exists, a recovery email will arrive shortly. Open the latest link in this browser.",
           );
         } else {
-          const { error } = await client.auth.signInWithPassword({
-            email,
-            password,
-          });
+          let result;
+          if (config.passwordLockoutEnabled) {
+            const tokens = await jsonRequest("/auth/password", {
+              method: "POST",
+              body: JSON.stringify({ email, password }),
+            });
+            result = await client.auth.setSession(tokens);
+          } else
+            result = await client.auth.signInWithPassword({ email, password });
+          const { error } = result;
           if (error) throw error;
-          const result = await controller.sync(destination());
-          if (!result.approved) {
-            signedOutDestination =
-              "/login?approval=" + (result.requestStatus || "pending");
-            await controller.signOut();
-          } else location.assign(result.next);
+          const synced = await controller.sync(destination());
+          if (!synced) throw new Error("Sign-in did not establish a session.");
+          location.assign(synced.next);
         }
       } catch (error) {
         failure(error);
       } finally {
         disable(form, false);
+        if (
+          mode === "recovery" &&
+          params.get("step") === "update" &&
+          !recoveryVerified
+        )
+          form
+            .querySelector('button[type="submit"]')
+            ?.setAttribute("disabled", "");
       }
     });
   const initializedForm = document.getElementById("auth-form");
@@ -263,28 +292,10 @@ async function initialize() {
       throw new Error(
         "No session was established. Return to sign-in and retry.",
       );
-    if (!result.approved) {
-      signedOutDestination =
-        "/login?approval=" + (result.requestStatus || "pending");
-      await controller.signOut();
-    } else location.replace(result.next);
-  } else if (mode === "pending") {
-    const result = await controller.sync();
-    if (!result) location.replace("/login");
-    else if (result.approved) location.replace("/workspace");
-    else
-      status(
-        loginNotice(
-          new URLSearchParams({
-            approval: result.requestStatus || "unavailable",
-          }),
-        ),
-        result.requestStatus === "revoked",
-      );
+    location.replace(result.next);
   } else if (isDashboard) {
     const result = await controller.sync(location.pathname);
     if (!result) return location.replace("/login");
-    if (!result.approved) return location.replace("/auth/access-pending");
     await jsonRequest("/auth/status");
     // HTTP failures stop the display but never replay data mutations.
     window.fetch = monitorDashFetch(

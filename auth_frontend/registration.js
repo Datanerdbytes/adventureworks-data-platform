@@ -21,15 +21,7 @@ export function loginNotice(params) {
   if (params.get("password_reset") === "1")
     return "Password updated. Sign in with your new password.";
   if (params.get("registered") === "1")
-    return "Sign in here after email verification and workspace approval. Verified accounts appear in the admin approval queue.";
-  if (params.get("approval") === "revoked")
-    return "Your workspace access has been revoked. Contact the workspace Owner or Admin.";
-  if (params.get("approval") === "pending")
-    return "Your account is awaiting workspace approval. Contact your Owner or Admin, then sign in again after approval.";
-  if (params.get("approval") === "rejected")
-    return "Your workspace access request was declined. Contact the workspace Owner or Admin.";
-  if (["cancelled", "unavailable"].includes(params.get("approval")))
-    return "Your account has no active workspace access. Contact the workspace Owner or Admin.";
+    return "Email verification complete. Sign in to access analytics.";
   return "";
 }
 

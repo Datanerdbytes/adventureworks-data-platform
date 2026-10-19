@@ -1,3 +1,23 @@
+# Current authentication override — 2026-10-19
+
+The user explicitly replaced workspace approval with the supabase-account-management
+skill's single protected owner/admin model. This section supersedes conflicting
+workspace/auth descriptions below; analytics and production safety rules remain.
+See [account management](docs/account-management.md) for the current contract and
+separately authorized hosted cutover. Confirmed active emails access shared reports;
+server-controlled `qe_role`, `qe_owner`, and `qe_suspended` govern account access.
+`/admin/users` replaces `/workspace/admin*`; workspace switching/approval endpoints
+and callbacks are retired. Historical governance data/migrations are retained.
+The designated owner is `datanerdbytes@gmail.com`; only the explicit bootstrap CLI
+may assign that role after verification. No hosted owner assignment is implied.
+Preserve existing Origin, cookie-bound CSRF, shared Redis rate limiting, session
+startup gating and warehouse boundaries. Account management requires a server-only
+service-role secret. New shared lockout requires its migration and explicit flag;
+failure must never fall back to direct login when enabled. Recovery uses isolated
+PKCE state and a bound identity; old fragment reset links require a fresh email.
+Run offline Python/auth tests and build tracked auth assets after source changes.
+Do not apply hosted migrations, change real accounts or deploy without authorization.
+
 # Agent Context & Rules
 
 Repository state reviewed: **2026-10-15**. This guide describes checked-in behavior; production configuration and deployment must be verified separately.
@@ -5,7 +25,7 @@ Repository state reviewed: **2026-10-15**. This guide describes checked-in behav
 ## 1. Project Overview
 
 - **Project Name:** AdventureWorks Analytics (Data Analytics Dashboard)
-- **Core Purpose:** An authenticated, workspace-governed Dash analytics application with BigQuery-backed sales reports, PostgreSQL → BigQuery ingestion, and dbt transformations. Dashboard activity, pipeline monitoring, and table exploration currently include synthetic fixtures; do not describe them as live telemetry.
+- **Core Purpose:** An authenticated, workspace-governed Dash analytics application with BigQuery-backed sales reports, PostgreSQL → BigQuery ingestion, and dbt transformations. Dashboard activity and pipeline monitoring currently include synthetic fixtures; do not describe them as live telemetry.
 - **Target Audience:** Internal business analysts, data engineers, and stakeholders.
 
 ## 2. Tech Stack & Environment
@@ -78,7 +98,7 @@ Ignored local state includes `.env`, `gcp-key.json`, `.venv/`, `node_modules/`, 
 ### Current routes and data boundaries
 
 - `/` is the public Flask landing page for visitors without an access cookie; authorized root navigation redirects to `/dashboard`. Authentication, recovery, callback, and access-pending screens are served outside Dash.
-- `/dashboard` shows synthetic activity and pipeline summaries. `/monitoring` and `/tables` currently use sample runs and records; they do not provide live dbt artifact monitoring or full warehouse browsing.
+- `/dashboard` shows synthetic activity and pipeline summaries. `/monitoring` currently uses sample runs and does not provide live dbt artifact monitoring. `/tables` uses bounded, read-only BigQuery previews of `dim_product`, `dim_customer`, and `fct_sales`; queries return at most 500 displayed rows with a 100 MiB billing cap. Search, sorting, and pagination apply to the loaded preview, not the full warehouse.
 - `/dashboard/executive`, `/dashboard/wholesale`, `/dashboard/growth`, and `/dashboard/customers` use warehouse loaders for report analytics. Preserve the calendar year, quarter, channel, category, and dependent subcategory filter contract in `sales_filters.py`.
 - Revenue, wholesale, growth, and customer loaders use parameterized read-only BigQuery queries and validated table identifiers. Analytics default to `gold_adventureworks`; wholesale fulfillment also uses `BQ_STAGING_DATASET` (default `silver_adventureworks`). Preserve query billing limits and explicit mart/fact fallbacks.
 - `/workspace/admin/members` provides permission-scoped workspace/email/role/access filters, ten memberships per page, and a canonical member details/access modal. `/workspace/admin` uses an independent five-event activity pager. Both read paths require migration `202610150001_admin_directory_activity.sql`, applied to hosted project `lcnsbwohtrxrtissvbzl` on 2026-10-15. Authenticated database reads and anonymous execute denial were verified; this does not establish deployment of the application code.

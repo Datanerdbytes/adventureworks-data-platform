@@ -45,8 +45,26 @@ export async function jsonRequest(url, options = {}, fetcher = fetch) {
   });
   const body = await response.json();
   if (!response.ok) {
+    const messages = {
+      invalid_credentials: "Invalid email or password.",
+      account_locked:
+        "Too many incorrect passwords. Try again in 15 minutes or reset your password.",
+      attempt_in_progress:
+        "Another sign-in attempt is in progress. Wait a moment and try again.",
+      attempt_expired: "This sign-in attempt expired. Try again.",
+      email_confirmation_required: "Confirm your email before signing in.",
+      account_suspended:
+        "Account access is suspended. Contact an administrator.",
+      auth_unavailable:
+        "Authentication is temporarily unavailable. Try again later.",
+      lockout_not_configured:
+        "Password sign-in is unavailable. Contact an administrator.",
+      rate_limited: "Too many requests. Wait a moment and try again.",
+    };
     const error = new Error(
-      body.error || "The request could not be completed.",
+      messages[body.error] ||
+        body.error ||
+        "The request could not be completed.",
     );
     error.status = response.status;
     throw error;

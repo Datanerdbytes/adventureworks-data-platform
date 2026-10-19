@@ -5,6 +5,7 @@ import dash_bootstrap_components as dbc
 from dash import Input, Output, callback, dcc, html
 from dash.exceptions import PreventUpdate
 from flask import g
+from user_admin import is_admin
 from components import card, heading, icon
 
 dash.register_page(
@@ -149,7 +150,7 @@ def layout():
             )
         ],
         "workspace-summary",
-        dbc.Badge("Verified Workspace", color=None, className="badge"),
+        dbc.Badge("Shared Analytics", color=None, className="badge"),
     )
     freshness = section(
         "Data Freshness",
@@ -316,7 +317,7 @@ def layout():
                 ),
             ),
             html.Div(
-                sample_badge("Workspace Metadata · Sample Sections"),
+                sample_badge("Shared Analytics · Sample Sections"),
                 className="workspace-preview-label",
             ),
             html.Nav(
@@ -342,7 +343,7 @@ def layout():
                 className="workspace-content-grid",
             ),
             html.P(
-                "Workspace Summary uses membership records and verified sign-in. Freshness, saved views, quality notices, and the glossary remain sample content.",
+                "Workspace Summary uses verified sign-in and server-managed account roles. Freshness, saved views, quality notices, and the glossary remain sample content.",
                 className="workspace-preview-footer",
             ),
         ],
@@ -376,18 +377,22 @@ def search_definitions(search):
 def populate_workspace_summary(path):
     if path != "/workspace":
         raise PreventUpdate
-    workspace = getattr(g, "workspace", None)
-    username = getattr(g, "workspace_username", None)
-    if not workspace or not username:
+    user = getattr(g, "auth_user", None)
+    if not user:
         raise PreventUpdate
+    metadata = user.get("app_metadata") or {}
+    role = (
+        "Owner"
+        if metadata.get("qe_owner") is True
+        else "Admin" if is_admin(user) else "Member"
+    )
     return [
         html.Div([html.Dt(label), html.Dd(value)])
         for label, value in (
-            ("Workspace", workspace["name"]),
-            ("Responsible Team", workspace["responsible_team"]),
-            ("Owners", ", ".join(workspace["owners"])),
-            ("Purpose", workspace["purpose"]),
-            ("Signed In As", username),
-            ("Your Role", workspace["role"].replace("_", " ").title()),
+            ("Workspace", "AdventureWorks Analytics"),
+            ("Purpose", "Shared AdventureWorks reporting"),
+            ("Access Policy", "Verified email; administrator-managed suspension"),
+            ("Signed In As", user["email"]),
+            ("Your Role", role),
         )
     ]

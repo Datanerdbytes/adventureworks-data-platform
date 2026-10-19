@@ -21,5 +21,7 @@ Provider artwork is stored locally to avoid external image requests:
   (official GitHub Invertocat Black SVG, unchanged).
 
 Successful email/password signup clears both fields while keeping the email
-confirmation and workspace-approval guidance visible. Failed signup retains the
-editable values; signup never creates an application session.
+confirmation guidance visible. Failed signup retains the
+editable values; signup never creates an application session. Confirmed active accounts can then sign in without workspace approval.
+
+Password fields include visible Show/Hide controls with aria-pressed state and password-manager autocomplete. Recovery uses a PKCE code in the requesting browser, an isolated session and bound identity.

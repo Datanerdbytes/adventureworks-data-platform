@@ -1,7 +1,7 @@
 // Protect only application mutations, never requests to Supabase or other origins.
 const protectedPaths = new Set([
   "/auth/session",
-  "/auth/workspace",
+  "/auth/password",
   "/_dash-update-component",
 ]);
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -15,7 +15,10 @@ export function csrfFetch(fetcher, baseUrl) {
       options?.method || (input instanceof Request ? input.method : "GET");
     if (
       target.origin !== base.origin ||
-      !protectedPaths.has(target.pathname) ||
+      !(
+        protectedPaths.has(target.pathname) ||
+        target.pathname.startsWith("/api/admin/")
+      ) ||
       !unsafeMethods.has(method.toUpperCase())
     ) {
       return fetcher(input, options);
