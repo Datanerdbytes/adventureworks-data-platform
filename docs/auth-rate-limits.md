@@ -1,3 +1,5 @@
+> Authentication cutover prepared 2026-10-19: the current owner/admin account model is documented in [Account management](account-management.md). Workspace approval, switching, and workspace bootstrap instructions below describe the retired model. Hosted rollout is a separate operator step.
+
 # Authentication rate limits
 
 The auth limiter requires `flask-limiter[redis]==3.12`, supplied by the Phase 2

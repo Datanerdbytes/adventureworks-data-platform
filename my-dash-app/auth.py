@@ -1,4 +1,4 @@
-"""Supabase identity and database membership guard, installed before Dash hooks."""
+"""Supabase identity and account access guard, installed before Dash hooks."""
 
 import os
 import base64
@@ -6,14 +6,31 @@ import json
 import secrets
 import hashlib
 import hmac
+import time
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 from dotenv import load_dotenv
-from flask import current_app, g, jsonify, redirect, render_template, request, session
+from flask import (
+    current_app,
+    g,
+    has_app_context,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+)
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from governance import GovernanceError, SupabaseGateway
 from rate_limiter import init_limiter, enforce_user_limit
+from password_auth import (
+    PasswordAuthError,
+    ensure_not_locked,
+    password_sign_in,
+    enabled as lockout_enabled,
+)
+from user_admin import account_suspended, install_admin_routes, is_admin
 
 COOKIE = "aw_access"
 CSRF_COOKIE = "aw_csrf"
@@ -72,7 +89,6 @@ AUTH_PAGES = {
     "/signup": "signup",
     "/auth/recovery": "recovery",
     "/auth/callback": "callback",
-    "/auth/access-pending": "pending",
 }
 PUBLIC_ASSETS = frozenset(
     {
@@ -88,9 +104,7 @@ SAFE_NEXT = frozenset(
     {
         "/dashboard",
         "/workspace",
-        "/workspace/admin",
-        "/workspace/admin/create",
-        "/workspace/admin/members",
+        "/admin/users",
         "/monitoring",
         "/tables",
         "/settings",
@@ -148,6 +162,49 @@ def auth_configuration_error(config):
     return None
 
 
+def settings():
+    config = (
+        current_app.config
+        if has_app_context()
+        else {
+            "SUPABASE_URL": os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/"),
+            "SUPABASE_PUBLIC_KEY": os.environ.get(
+                "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+            )
+            or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", ""),
+            "AUTH_APP_ORIGIN": os.environ.get("AUTH_APP_ORIGIN", "").rstrip("/"),
+            "AUTH_SECRET_CONFIGURED": bool(os.environ.get("FLASK_SECRET_KEY")),
+            "SESSION_COOKIE_SECURE": not os.environ.get(
+                "AUTH_APP_ORIGIN", ""
+            ).startswith("http://"),
+        }
+    )
+    error = auth_configuration_error(config)
+    if error:
+        raise GovernanceError(error)
+    return (
+        config["SUPABASE_URL"],
+        config["SUPABASE_PUBLIC_KEY"],
+        config["AUTH_APP_ORIGIN"],
+        config["SESSION_COOKIE_SECURE"],
+    )
+
+
+def token_lifetime(token):
+    # Called only after remote Auth verification. Claims never authorize roles.
+    try:
+        payload = token.split(".")[1]
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        )
+        remaining = int(claims["exp"]) - int(time.time())
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise GovernanceError("Your session is invalid or expired.", 401) from None
+    if remaining <= 0:
+        raise GovernanceError("Your session is invalid or expired.", 401)
+    return min(remaining, 3600)
+
+
 def install_auth(server):
     load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
     origin = os.environ.get("AUTH_APP_ORIGIN", "").rstrip("/")
@@ -173,6 +230,7 @@ def install_auth(server):
     server.extensions["supabase_gateway_factory"] = SupabaseGateway
 
     limiter = init_limiter(server)
+    install_admin_routes(server)
 
     def configuration():
         error = auth_configuration_error(server.config)
@@ -191,37 +249,23 @@ def install_auth(server):
     def load_identity(token=None):
         client = gateway(token)
         user = client.user()
-        g.auth_user, g.governance = user, client
-        g.workspace_username = user["email"]
+        if account_suspended(user):
+            raise GovernanceError("Account access is suspended.", 403)
+        try:
+            ensure_not_locked(user["email"])
+        except PasswordAuthError as error:
+            raise GovernanceError(
+                (
+                    "Account is temporarily locked."
+                    if error.code == "account_locked"
+                    else "Authentication is unavailable."
+                ),
+                403 if error.code == "account_locked" else 503,
+            ) from None
+        g.auth_user = user
+        g.account_username = user["email"]
         enforce_user_limit(limiter, user)
         return client, user
-
-    def load_context(client):
-        context = client.rpc("workspace_context")
-        if not isinstance(context, dict) or not isinstance(
-            context.get("workspaces"), list
-        ):
-            raise GovernanceError("Workspace service returned an invalid response.")
-        workspaces = context["workspaces"]
-        if any(
-            not isinstance(w, dict)
-            or not isinstance(w.get("id"), str)
-            or w.get("role") not in ("owner", "admin", "viewer", "platform_admin")
-            or not all(
-                isinstance(w.get(field), str)
-                for field in ("name", "purpose", "responsible_team")
-            )
-            or not isinstance(w.get("owners"), list)
-            for w in workspaces
-        ):
-            raise GovernanceError("Workspace service returned an invalid response.")
-        selected = session.get("workspace_id")
-        workspace = next((w for w in workspaces if w["id"] == selected), None)
-        if workspace is None and workspaces:
-            workspace = workspaces[0]
-            session["workspace_id"] = workspace["id"]
-        g.workspace_context, g.workspace = context, workspace
-        return workspace
 
     def origin_required():
         if request.headers.get("Origin") != server.config["AUTH_APP_ORIGIN"]:
@@ -276,47 +320,43 @@ def install_auth(server):
                 url=server.config["SUPABASE_URL"],
                 publicKey=server.config["SUPABASE_PUBLIC_KEY"],
                 providers=server.config["AUTH_PROVIDERS"],
+                passwordLockoutEnabled=lockout_enabled(),
             )
         except GovernanceError as error:
             return failure(error)
 
-    @server.get("/auth/registration")
-    @limiter.limit("20 per minute; 60 per hour")
-    def registration_workspace():
+    @server.post("/auth/password")
+    @limiter.limit("20 per minute; 100 per hour")
+    def password_login():
         try:
             configuration()
-            code = request.args.get("workspace")
-            if code is not None and (
-                len(code) != 48 or any(c not in "0123456789abcdef" for c in code)
-            ):
-                raise GovernanceError("Registration link is unavailable", 400)
-            client = server.extensions["supabase_gateway_factory"](
-                server.config["SUPABASE_URL"],
-                server.config["SUPABASE_PUBLIC_KEY"],
-                None,
-            )
-            target = client.rpc("registration_workspace", p_code=code)
-            if (
-                not isinstance(target, dict)
-                or (
-                    target.get("code") is not None
-                    and not isinstance(target.get("code"), str)
-                )
-                or not isinstance(target.get("name"), str)
-            ):
-                raise GovernanceError("Registration link is unavailable", 400)
-            return jsonify(target)
+            origin_required()
+            csrf_required()
+            if request.content_length and request.content_length > 8192:
+                raise GovernanceError("Invalid sign-in request.", 400)
+            body = request.get_json(silent=True)
+            if not isinstance(body, dict) or set(body) != {"email", "password"}:
+                raise GovernanceError("Invalid sign-in request.", 400)
+            return jsonify(password_sign_in(body["email"], body["password"]))
         except GovernanceError as error:
             return failure(error)
+        except PasswordAuthError as error:
+            response = jsonify(error=error.code, retry_after=error.retry_after)
+            response.status_code = error.status
+            if error.retry_after:
+                response.headers["Retry-After"] = str(error.retry_after)
+            return response
 
     @server.route("/auth/session", methods=["POST", "DELETE"])
     @limiter.limit("30 per minute; 300 per hour", methods=["POST"], per_method=True)
     @limiter.limit("120 per minute; 600 per hour", methods=["DELETE"], per_method=True)
     def auth_session():
+        may_clear_cookie = False
         try:
             configuration()
             origin_required()
             csrf_required()
+            may_clear_cookie = True
             if request.method == "DELETE":
                 session.clear()
                 response = jsonify(signedOut=True)
@@ -340,87 +380,43 @@ def install_auth(server):
             if not isinstance(token, str) or not token:
                 raise GovernanceError("A valid access token is required.", 401)
             client, user = load_identity(token)
-            # Membership is granted transactionally by the reviewing administrator.
-            workspace = load_context(client)
+            remaining = token_lifetime(token)
+            session.clear()  # Discard any legacy selected-workspace session.
             response = jsonify(
-                approved=workspace is not None,
+                approved=True,
                 user={"email": user["email"]},
-                requestStatus=(
-                    (
-                        "revoked"
-                        if client.has_revoked_membership(user["id"])
-                        else client.rpc("my_access_request_status")
-                    )
-                    if workspace is None
-                    else None
-                ),
-                next=(
-                    safe_next(payload.get("next"))
-                    if workspace
-                    else "/auth/access-pending"
-                ),
+                next=safe_next(payload.get("next")),
             )
-            if workspace is None:
-                session.clear()
-                response.delete_cookie(
-                    CSRF_COOKIE,
-                    httponly=True,
-                    samesite="Lax",
-                    secure=server.config["SESSION_COOKIE_SECURE"],
-                )
-                response.delete_cookie(
-                    COOKIE,
-                    httponly=True,
-                    secure=server.config["SESSION_COOKIE_SECURE"],
-                    samesite="Lax",
-                )
-                return response
             response.set_cookie(
                 COOKIE,
                 payload["access_token"],
-                max_age=3600,
+                max_age=remaining,
                 httponly=True,
                 secure=server.config["SESSION_COOKIE_SECURE"],
                 samesite="Lax",
             )
             return response
         except GovernanceError as error:
-            return failure(error)
+            response, status = failure(error)
+            if may_clear_cookie:
+                response.delete_cookie(
+                    COOKIE,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=server.config["SESSION_COOKIE_SECURE"],
+                )
+            return response, status
 
     @server.get("/auth/status")
     @limiter.limit("120 per minute; 600 per hour")
     def auth_status():
         try:
             client, user = load_identity()
-            workspace = load_context(client)
-            if workspace is None:
-                raise GovernanceError(
-                    "Your account has no approved workspace membership.", 403
-                )
             return jsonify(
                 email=user["email"],
-                workspace=workspace,
-                platformAdmin=g.workspace_context.get("platform_admin", False),
+                admin=is_admin(user),
+                owner=(user.get("app_metadata") or {}).get("qe_owner") is True,
             )
-        except GovernanceError as error:
-            return failure(error)
-
-    @server.post("/auth/workspace")
-    @limiter.limit("30 per minute; 100 per hour")
-    def select_workspace():
-        try:
-            origin_required()
-            csrf_required()
-            client, _ = load_identity()
-            load_context(client)
-            payload = request.get_json(silent=True) or {}
-            if not isinstance(payload, dict):
-                raise GovernanceError("Invalid workspace selection.", 400)
-            selected = payload.get("workspace_id")
-            if not any(w["id"] == selected for w in g.workspace_context["workspaces"]):
-                raise GovernanceError("Workspace access denied.", 403)
-            session["workspace_id"] = selected
-            return jsonify(next="/workspace")
         except GovernanceError as error:
             return failure(error)
 
@@ -444,17 +440,16 @@ def install_auth(server):
         )
 
     @server.before_request
-    def protect_workspace():
+    def protect_accounts():
         if request.path in AUTH_PAGES and request.method in ("GET", "HEAD"):
             return None
         if request.path in PUBLIC_ASSETS and request.method in ("GET", "HEAD"):
             return None
         if (
-            request.path
-            in ("/auth/config", "/auth/status", "/auth/registration", "/auth/csrf")
+            request.path in ("/auth/config", "/auth/status", "/auth/csrf")
             and request.method in ("GET", "HEAD")
         ) or (
-            request.path in ("/auth/session", "/auth/workspace")
+            request.path in ("/auth/session", "/auth/password")
             and request.method in ("POST", "DELETE")
         ):
             return None  # Endpoints enforce their own identity/origin requirements.
@@ -472,31 +467,18 @@ def install_auth(server):
                 origin_required()
                 csrf_required()
             client, _ = load_identity()
-            workspace = load_context(client)
-            if workspace is None:
-                raise GovernanceError(
-                    "Your account has no approved workspace membership.", 403
-                )
             if request.path == "/":
                 return redirect("/dashboard")
-            if request.path == "/workspace/admin" and workspace["role"] not in (
-                "owner",
-                "admin",
-                "platform_admin",
-            ):
-                raise GovernanceError("Workspace administration access denied.", 403)
-            if request.path == "/workspace/admin/members" and not any(
-                w["role"] in ("owner", "admin", "platform_admin")
-                for w in g.workspace_context["workspaces"]
-            ):
-                raise GovernanceError("Workspace administration access denied.", 403)
+            if request.path.startswith("/workspace/admin") or request.path in {
+                "/auth/workspace",
+                "/auth/registration",
+                "/auth/access-pending",
+            }:
+                raise GovernanceError("Workspace governance has been retired.", 410)
             if (
-                request.path == "/workspace/admin/create"
-                and not g.workspace_context.get("platform_admin")
-            ):
-                raise GovernanceError("Platform administrator required.", 403)
-            if request.method not in ("GET", "HEAD", "OPTIONS"):
-                origin_required()
+                request.path == "/admin/users" or request.path.startswith("/api/admin/")
+            ) and not is_admin(g.auth_user):
+                raise GovernanceError("Administrator access required.", 403)
         except GovernanceError as error:
             if (
                 request.method == "GET"
@@ -506,7 +488,7 @@ def install_auth(server):
                 destination = (
                     "/login?" + urlencode({"next": safe_next(request.path)})
                     if error.status == 401
-                    else "/auth/access-pending"
+                    else "/login"
                 )
                 return redirect(destination)
             return failure(error)

@@ -1,3 +1,5 @@
+> Authentication cutover prepared 2026-10-19: the current owner/admin account model is documented in [Account management](account-management.md). Workspace approval, switching, and workspace bootstrap instructions below describe the retired model. Hosted rollout is a separate operator step.
+
 # Bootstrap database credentials
 
 `SUPABASE_DB_URL` is a privileged PostgreSQL connection secret for the standalone

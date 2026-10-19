@@ -28,20 +28,21 @@ def walk(node):
 
 class WorkspaceTests(unittest.TestCase):
     def test_summary_uses_configuration_and_verified_identity(self):
-        from auth_fixtures import WORKSPACE
 
         with app.server.test_request_context():
             with self.assertRaises(PreventUpdate):
                 populate_workspace_summary("/workspace")
-            g.workspace_username = "verified@example.test"
-            g.workspace = WORKSPACE
+            g.auth_user = {
+                "email": "verified@example.test",
+                "email_confirmed_at": "2026-10-19",
+                "app_metadata": {"qe_role": "admin", "qe_owner": True},
+            }
             fields = populate_workspace_summary("/workspace")
             values = {
                 field.children[0].children: field.children[1].children
                 for field in fields
             }
-            self.assertEqual(values["Workspace"], "Test Workspace")
-            self.assertEqual(values["Responsible Team"], "Governance Team")
+            self.assertEqual(values["Workspace"], "AdventureWorks Analytics")
             self.assertEqual(values["Signed In As"], "verified@example.test")
             self.assertEqual(values["Your Role"], "Owner")
             with self.assertRaises(PreventUpdate):

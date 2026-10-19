@@ -1,6 +1,21 @@
 """Offline Supabase fixtures. Never used by application code."""
 
 from governance import GovernanceError
+import base64
+import json
+import time
+
+
+def token(kind="approved", lifetime=3600):
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps({"exp": int(time.time()) + lifetime, "fixture": kind}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return "fixture." + payload + ".signature"
+
 
 WORKSPACE = {
     "id": "11111111-1111-1111-1111-111111111111",
@@ -25,6 +40,11 @@ class FakeGateway:
 
     def __init__(self, url, key, token):
         self.token = token
+        if token and token.startswith("fixture."):
+            payload = token.split(".")[1]
+            self.token = json.loads(
+                base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+            )["fixture"]
 
     def user(self):
         if self.token in ("expired", "tampered"):
@@ -37,6 +57,11 @@ class FakeGateway:
             "id": "22222222-2222-2222-2222-222222222222",
             "email": "owner@example.test",
             "email_confirmed_at": "2026-10-12",
+            "app_metadata": {
+                "qe_role": "member" if self.token == "viewer" else "admin",
+                "qe_owner": self.token != "viewer",
+                "qe_suspended": self.token == "suspended",
+            },
         }
 
     def rpc(self, name, **payload):

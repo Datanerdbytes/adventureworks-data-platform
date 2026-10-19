@@ -97,9 +97,8 @@
           <h1 id="auth-title">
             {% if mode == 'signup' %}Create Your Account{% elif mode ==
             'recovery' %}{{ 'Set Your New Password' if request.args.get('step')
-            == 'update' else 'Reset Your Password' }}{% elif mode == 'pending'
-            %}Workspace Approval Required{% elif mode == 'callback' %}Completing
-            Sign-In{% else %}Welcome Back{% endif %}
+            == 'update' else 'Reset Your Password' }}{% elif mode == 'callback'
+            %}Completing Sign-In{% else %}Welcome Back{% endif %}
           </h1>
           <p id="auth-status" role="status" aria-live="polite">
             Connecting securely…
@@ -135,6 +134,7 @@
               required
               minlength="{{ 1 if mode == 'login' else 12 }}"
             />
+            <button type="button" class="auth-visibility" data-password-toggle="auth-password" aria-controls="auth-password" aria-pressed="false">Show password</button>
             {% if mode == 'recovery' and request.args.get('step') == 'update' %}
             <label for="auth-password-confirmation">Confirm New Password</label>
             <input
@@ -145,6 +145,7 @@
               required
               minlength="12"
             />
+            <button type="button" class="auth-visibility" data-password-toggle="auth-password-confirmation" aria-controls="auth-password-confirmation" aria-pressed="false">Show password</button>
             {% endif %} {% endif %}
             <button class="button primary" type="submit">
               {% if mode == 'signup' %}Create Account{% elif mode == 'recovery'
@@ -190,12 +191,7 @@
             {% if mode == 'login' %}<a href="/signup">Create Account</a> {% else
             %}<a href="/login">Back To Sign In</a>{% endif %}
           </p>
-          {% endif %} {% if mode == 'pending' %}<button
-            class="button"
-            id="auth-sign-out"
-          >
-            Sign Out</button
-          >{% endif %} {% if mode not in ['login','signup','recovery'] %}
+          {% endif %} {% if mode not in ['login','signup','recovery'] %}
           <button class="button" id="auth-retry">Reload to Retry</button>
           {% endif %} {% if mode == 'recovery' %}
           <p class="auth-links">

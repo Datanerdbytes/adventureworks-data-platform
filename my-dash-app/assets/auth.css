@@ -342,3 +342,18 @@ body.auth-page {
 :root.theme-dark .auth-brand-panel {
   color: #f1f5f9;
 }
+
+.auth-visibility {
+  min-height: 44px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.auth-visibility:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

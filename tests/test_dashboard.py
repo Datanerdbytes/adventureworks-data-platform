@@ -26,6 +26,21 @@ class DashboardTests(unittest.TestCase):
         )
         gateway_patch.start()
         self.addCleanup(gateway_patch.stop)
+        preview = patch(
+            "pages.tables.load_table_preview",
+            return_value={
+                "rows": [
+                    {
+                        "product_key": 100,
+                        "product_name": "Warehouse fixture",
+                        "list_price": 49.5,
+                    }
+                ],
+                "capped": False,
+            },
+        )
+        preview.start()
+        self.addCleanup(preview.stop)
         self.auth = {}
 
     def test_routes_and_shell(self):
@@ -98,6 +113,7 @@ class DashboardTests(unittest.TestCase):
                     "property": "data",
                     "value": {"pageSize": 10},
                 },
+                {"id": "app-location", "property": "pathname", "value": "/tables"},
             ],
             "state": [],
             "changedPropIds": ["tables-selector.value"],
@@ -106,7 +122,7 @@ class DashboardTests(unittest.TestCase):
             "/_dash-update-component", json=body, headers=csrf_headers(self.client)
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json["response"]["tables-grid"]["rowData"]), 48)
+        self.assertEqual(len(response.json["response"]["tables-grid"]["rowData"]), 1)
         layout = self.client.get("/_dash-layout")
         self.assertIn(b"Account for owner@example.test", layout.data)
         self.assertNotIn(b"test-public-key", layout.data)
@@ -133,7 +149,7 @@ class DashboardTests(unittest.TestCase):
         rows, columns, options, message = tables.populate(
             "Products", "Bike", {"pageSize": 50}
         )
-        self.assertEqual(len(rows), 48)
+        self.assertEqual(len(rows), 1)
         self.assertEqual(options["quickFilterText"], "Bike")
         self.assertEqual(options["paginationPageSize"], 50)
         self.assertEqual(tables.populate("missing", None, None)[0], [])

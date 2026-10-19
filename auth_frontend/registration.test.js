@@ -24,15 +24,12 @@ test("email confirmation is a registration step, not automatic sign-in", () => {
     !registrationCallback("recovery", new URLSearchParams("type=recovery")),
   );
 });
-test("login explains verification and pending approval without exposing identities", () => {
+test("login explains verification without legacy workspace approval", () => {
   assert.match(
     loginNotice(new URLSearchParams("registered=1")),
-    /email verification and workspace approval/,
+    /verification complete/,
   );
-  assert.match(
-    loginNotice(new URLSearchParams("approval=pending")),
-    /awaiting workspace approval/,
-  );
+  assert.equal(loginNotice(new URLSearchParams("approval=pending")), "");
   assert.equal(loginNotice(new URLSearchParams()), "");
 });
 
@@ -90,24 +87,6 @@ test("OAuth and recovery still exchange codes and propagate failures", async () 
   );
 });
 
-test("rejected requests do not masquerade as pending approval", () => {
-  assert.match(
-    loginNotice(new URLSearchParams("approval=rejected")),
-    /declined/,
-  );
-  assert.match(
-    loginNotice(new URLSearchParams("approval=unavailable")),
-    /no active workspace access/,
-  );
-});
-
-test("revoked access is distinct from pending approval", () => {
-  const message = loginNotice(new URLSearchParams("approval=revoked"));
-  assert.match(message, /access has been revoked/);
-  assert.match(message, /Owner or Admin/);
-  assert.doesNotMatch(message, /awaiting/);
-});
-
 test("signup clears both fields only after the provider accepts registration", async () => {
   const { submitRegistration } = await import("./registration.js");
   const email = { value: "signup@example.test" };
@@ -134,7 +113,9 @@ test("signup clears both fields only after the provider accepts registration", a
   const credentials = {
     email: email.value,
     password: password.value,
-    options: { data: { workspace_registration_code: "synthetic" } },
+    options: {
+      emailRedirectTo: "https://app.example/auth/callback?registration=1",
+    },
   };
   const pending = submitRegistration(client, form, credentials);
   assert.equal(resets, 0);

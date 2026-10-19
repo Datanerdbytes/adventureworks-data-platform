@@ -25,6 +25,8 @@ class PreCommitChecksTests(unittest.TestCase):
             self.assertEqual(pre_commit_checks.main(), 0)
             command, environment = run.call_args.args
             self.assertEqual(command[-4:], ["discover", "-s", "tests", "-v"])
+            self.assertEqual(environment["AUTH_PASSWORD_LOCKOUT_ENABLED"], "false")
+            self.assertEqual(environment["SUPABASE_SERVICE_ROLE_KEY"], "")
             self.assertEqual(environment["RATE_LIMIT_ENVIRONMENT"], "testing")
             self.assertEqual(environment["RATE_LIMIT_REDIS_URL"], "")
             self.assertEqual(environment["RATE_LIMIT_TRUST_PROXY"], "")

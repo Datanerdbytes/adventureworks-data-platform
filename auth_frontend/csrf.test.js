@@ -38,7 +38,7 @@ test("init overrides Request method and headers without mutation", async () => {
     sent = input;
     return new Response();
   }, origin);
-  const request = new Request(origin + "/auth/workspace");
+  const request = new Request(origin + "/auth/password");
   const options = {
     method: "POST",
     headers: [["X-Existing", "kept"]],
@@ -98,7 +98,7 @@ test("issuance failure, malformed token and cancellation prevent mutation", asyn
       count++;
       return response;
     }, origin);
-    await assert.rejects(wrapped("/auth/workspace", { method: "POST" }));
+    await assert.rejects(wrapped("/auth/password", { method: "POST" }));
     assert.equal(count, 1);
   }
   const abort = new AbortController();

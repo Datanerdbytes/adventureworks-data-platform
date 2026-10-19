@@ -40,7 +40,12 @@ def run_tests(container):
     sql(
         "insert into auth.users(id,email,email_confirmed_at) values('a0000000-0000-0000-0000-000000000099','legacy-pending@example.test',now()); set role authenticated; select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',false); select public.approve_workspace_email('10000000-0000-0000-0000-000000000001','legacy-pending@example.test','viewer'); reset role;"
     )
+    # Legacy authorization and concurrency checks need the grants/queue trigger
+    # that the account-model cutover intentionally retires.
+    cutover = "202610190004_retire_workspace_access.sql"
     for migration in migrations[3:]:
+        if migration.name >= cutover:
+            break
         sql(migration.read_text())
     sql((ROOT / "supabase/tests/access_requests.sql").read_text())
     sql((ROOT / "supabase/tests/password_lockout.sql").read_text())
@@ -108,8 +113,22 @@ def run_tests(container):
         "select count(*) from public.workspace_memberships where workspace_id='10000000-0000-0000-0000-000000000001' and active and role='owner';"
     )
     assert "\n     1\n" in result.stdout, result.stdout
+    # One psql session keeps the temporary preservation snapshot across commits.
+    sql(
+        "create temporary table legacy_cutover_snapshot as select "
+        "(select count(*) from public.workspaces) as workspaces, "
+        "(select count(*) from public.workspace_memberships) as memberships, "
+        "(select count(*) from public.governance_audit_events) as events;\n"
+        + "\n".join(
+            migration.read_text()
+            for migration in migrations
+            if migration.name >= cutover
+        )
+        + "\n"
+        + (ROOT / "supabase/tests/account_cutover.sql").read_text()
+    )
     print(
-        "Governance, RLS, role boundaries, request approvals, password lockout/expiry/recovery, concurrent password failures, and concurrent last-owner tests passed."
+        "Account cutover, history preservation, governance, RLS, role boundaries, request approvals, password lockout/expiry/recovery, concurrent password failures, and concurrent last-owner tests passed."
     )
 
 

@@ -3,6 +3,7 @@
 from dash import Dash, Input, Output, clientside_callback, dcc, html, page_container
 from flask import Flask, Response, g, has_request_context, render_template
 from auth import install_auth
+from user_admin import is_admin
 from components import icon
 from analytics import REPORTS
 from revenue_kpis import init_kpi_cache
@@ -44,7 +45,7 @@ app.index_string = app.index_string.replace(
     "<body>", '<body class="auth-blocked">'
 ).replace(
     "{%app_entry%}",
-    '<section id="auth-startup" role="status"><h1>Connecting to Your Workspace</h1>'
+    '<section id="auth-startup" role="status"><h1>Connecting to Analytics</h1>'
     '<p id="auth-status">Verifying your session…</p></section>{%app_entry%}',
 )
 app.renderer = "window.awAuthStart(function() { new DashRenderer(); });"
@@ -52,13 +53,15 @@ app.renderer = "window.awAuthStart(function() { new DashRenderer(); });"
 
 def serve_layout():
     username = (
-        getattr(g, "workspace_username", "Workspace member")
-        if has_request_context()
-        else "Workspace member"
+        getattr(g, "account_username", "Member") if has_request_context() else "Member"
     )
-    workspace = getattr(g, "workspace", None) if has_request_context() else None
-    role = workspace["role"] if workspace else ""
-    can_admin = role in {"owner", "admin", "platform_admin"}
+    user = getattr(g, "auth_user", {}) if has_request_context() else {}
+    can_admin = is_admin(user)
+    role = (
+        "Owner"
+        if (user.get("app_metadata") or {}).get("qe_owner") is True
+        else "Admin" if can_admin else "Member"
+    )
     initials = "".join(
         part[0] for part in username.replace("@", " ").replace(".", " ").split()[:2]
     ).upper()
@@ -145,13 +148,9 @@ def serve_layout():
                                 [
                                     html.Span("A", className="project-icon"),
                                     html.Strong(
-                                        workspace["name"] if workspace else "Workspace",
+                                        "AdventureWorks Analytics",
                                         className="workspace-name nav-label",
-                                        title=(
-                                            workspace["name"]
-                                            if workspace
-                                            else "Workspace"
-                                        ),
+                                        title="AdventureWorks Analytics",
                                     ),
                                 ],
                                 className="workspace-card",
@@ -167,13 +166,13 @@ def serve_layout():
                                         [
                                             icon("settings"),
                                             html.Span(
-                                                "Workspace Admin",
+                                                "User Management",
                                                 className="nav-label",
                                             ),
                                         ],
-                                        href="/workspace/admin",
+                                        href="/admin/users",
                                         className="nav-link",
-                                        title="Workspace Administration",
+                                        title="User Management",
                                     )
                                 ]
                                 if can_admin
@@ -280,7 +279,7 @@ def serve_layout():
                                                 className="account-option",
                                             ),
                                             html.P(
-                                                "Signed in with Supabase. Workspace roles are verified by the server.",
+                                                "Signed in with Supabase. Account access is verified by the server.",
                                                 className="account-hint",
                                             ),
                                         ],
@@ -357,8 +356,8 @@ clientside_callback(
     const reports = {executive:'Revenue & Sales',wholesale:'Wholesale & Resellers',growth:'Growth & Seasonality',customers:'Customers & Regions'};
     const report = reports[(path || '').split('/')[2]];
     window.awSidebar?.navigate(path);
-    return [...keys.map(k => k === key && !(k === 'workspace' && (path || '').startsWith('/workspace/admin')) ? 'nav-link active' : 'nav-link'),
-      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? ((path || '').startsWith('/workspace/admin') ? (path === '/workspace/admin/create' ? 'Workspace Administration / Create workspace' : (path === '/workspace/admin/members' ? 'Workspace Administration / Members' : 'Workspace Administration')) : 'Workspace Overview') : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found'))];
+    return [...keys.map(k => k === key ? 'nav-link active' : 'nav-link'),
+      report && key === 'dashboard' ? 'Dashboard / ' + report : (key === 'workspace' ? 'Workspace Overview' : (path === '/admin/users' ? 'User Management' : (keys.includes(key) ? key[0].toUpperCase()+key.slice(1) : 'Page not found')))];
 }""",
     *[
         Output(f"nav-{key}", "className")

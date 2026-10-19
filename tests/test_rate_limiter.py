@@ -11,7 +11,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from auth import install_auth
-from auth_fixtures import csrf_headers, CONFIG, FakeGateway
+from auth_fixtures import csrf_headers, CONFIG, FakeGateway, token as fixture_token
 from rate_limiter import USER_LIMITS
 
 
@@ -61,9 +61,7 @@ class RateLimitTests(unittest.TestCase):
             "/signup",
             "/auth/recovery",
             "/auth/callback",
-            "/auth/access-pending",
             "/auth/config",
-            "/auth/registration",
         ):
             self.assertEqual(self.client.get(path).status_code, 200, path)
         self.assertEqual(self.client.get("/auth/status").status_code, 401)
@@ -73,7 +71,7 @@ class RateLimitTests(unittest.TestCase):
             self.assertEqual(
                 self.client.post(
                     "/auth/session",
-                    json={"access_token": "approved"},
+                    json={"access_token": fixture_token()},
                     headers=csrf_headers(self.client),
                 ).status_code,
                 200,
@@ -82,7 +80,7 @@ class RateLimitTests(unittest.TestCase):
         calls = len(FakeGateway.calls)
         response = self.client.post(
             "/auth/session",
-            json={"access_token": "approved"},
+            json={"access_token": fixture_token()},
             headers=csrf_headers(self.client),
         )
         self.assertEqual(response.status_code, 429)
@@ -105,7 +103,7 @@ class RateLimitTests(unittest.TestCase):
             "/auth/session", headers=csrf_headers(self.client)
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("aw_access=;", ";".join(response.headers.getlist("Set-Cookie")))
+        self.assertIsNone(self.client.get_cookie("aw_access"))
         self.assertEqual(CountingGateway.validations, 0)
 
     def test_untrusted_forwarding_does_not_bypass_ip_limit(self):
@@ -201,7 +199,9 @@ class RateLimitTests(unittest.TestCase):
         self.assertEqual(self.client.get("/auth/config").status_code, 200)
 
     def test_auth_guards_still_fail_closed(self):
-        response = self.client.post("/auth/session", json={"access_token": "approved"})
+        response = self.client.post(
+            "/auth/session", json={"access_token": fixture_token()}
+        )
         self.assertEqual(response.status_code, 403)
         for token, status in (("tampered", 401), ("unconfirmed", 403), ("outage", 503)):
             response = self.client.post(
@@ -210,20 +210,20 @@ class RateLimitTests(unittest.TestCase):
                 headers=csrf_headers(self.client),
             )
             self.assertEqual(response.status_code, status)
-            self.assertNotIn("aw_access=", response.headers.get("Set-Cookie", ""))
+            self.assertIsNone(self.client.get_cookie("aw_access"))
         response = self.client.post(
             "/auth/session",
-            json={"access_token": "no-member"},
+            json={"access_token": fixture_token("no-member")},
             headers=csrf_headers(self.client),
         )
-        self.assertFalse(response.json["approved"])
-        self.assertIn("aw_access=;", ";".join(response.headers.getlist("Set-Cookie")))
+        self.assertTrue(response.json["approved"])
+        self.assertIsNotNone(self.client.get_cookie("aw_access"))
 
     def test_runtime_storage_failure_is_sanitized_503_before_supabase(self):
         with patch.object(
             self.limiter.storage, "incr", side_effect=RedisConnectionError("secret-url")
         ):
-            response = self.client.get("/auth/registration")
+            response = self.client.get("/auth/config")
         self.assertEqual(response.status_code, 503)
         self.assertTrue(response.is_json)
         self.assertEqual(response.headers["Cache-Control"], "private, no-store")

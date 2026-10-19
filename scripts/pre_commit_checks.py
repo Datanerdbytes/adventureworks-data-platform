@@ -40,6 +40,8 @@ def main() -> int:
         # Override .env so application import cannot contact production Redis.
         # The existing tests mock all Supabase, BigQuery and PostgreSQL calls.
         env.update(
+            AUTH_PASSWORD_LOCKOUT_ENABLED="false",  # pragma: allowlist secret (synthetic test data or non-secret feature flag)
+            SUPABASE_SERVICE_ROLE_KEY="",
             RATE_LIMIT_ENVIRONMENT="testing",
             RATE_LIMIT_REDIS_URL="",
             RATE_LIMIT_TRUST_PROXY="",
