@@ -5,7 +5,7 @@ select
     d.reseller_key as mart_reseller_key
 from {{ source('raw_adventureworks', 'dimreseller') }} r
 full outer join {{ model }} d
-    on cast(r.resellerkey as int64) = d.reseller_key
+    on cast(r.resellerkey as bigint) = d.reseller_key
 left join {{ source('raw_adventureworks', 'dimgeography') }} g
     on r.geographykey = g.geographykey
 where r.resellerkey is null
@@ -14,10 +14,10 @@ where r.resellerkey is null
    or d.reseller_id is distinct from r.reselleralternatekey
    or d.reseller_name is distinct from trim(r.resellername)
    or d.order_frequency is distinct from trim(r.orderfrequency)
-   or d.number_of_employees is distinct from cast(r.numberemployees as int64)
-   or d.annual_revenue is distinct from cast(r.annualrevenue as float64)
+   or d.number_of_employees is distinct from cast(r.numberemployees as bigint)
+   or d.annual_revenue is distinct from cast(r.annualrevenue as double)
    or d.product_line is distinct from r.productline
-   or d.year_opened is distinct from cast(r.yearopened as int64)
+   or d.year_opened is distinct from cast(r.yearopened as bigint)
    or d.city is distinct from trim(g.city)
    or d.state_province_name is distinct from trim(g.stateprovincename)
    or d.country_region_name is distinct from trim(g.englishcountryregionname)

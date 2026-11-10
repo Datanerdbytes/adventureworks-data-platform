@@ -23,6 +23,8 @@ CACHEDIR.TAG
 # Local dbt logs and auto-compiled target SQL code blocks
 logs/
 target/
+adventureworks_analytics/build/
+
 dbt_packages/
 dbt_modules/
 

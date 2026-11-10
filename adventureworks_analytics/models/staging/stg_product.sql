@@ -12,9 +12,9 @@ raw_categories as (
 
 select
     -- 🔑 Primary & Foreign Keys
-    cast(p.productkey as int64) as product_key,
-    cast(p.productsubcategorykey as int64) as product_subcategory_key,
-    cast(s.productcategorykey as int64) as product_category_key,
+    cast(p.productkey as bigint) as product_key,
+    cast(p.productsubcategorykey as bigint) as product_subcategory_key,
+    cast(s.productcategorykey as bigint) as product_category_key,
 
     -- 🏷️ Identifiers & Codes
     p.productalternatekey as product_id,
@@ -25,7 +25,7 @@ select
     p.weightunitmeasurecode as weight_unit_measure_code,
 
     -- 📊 Inventory Specifications
-    cast(p.weight as float64) as weight,
+    cast(p.weight as double) as weight,
     case
         when upper(trim(p.productline)) = 'M'  then 'Mountain'
         when upper(trim(p.productline)) = 'R'  then 'Road'
@@ -49,8 +49,8 @@ select
     p.modelname as model_name,
 
     -- 💰 Financial Context
-    cast(p.standardcost as float64) as standard_cost,
-    cast(p.listprice as float64) as list_price,
+    cast(p.standardcost as double) as standard_cost,
+    cast(p.listprice as double) as list_price,
 
     -- 🛠️ Statuses & Flags
     case

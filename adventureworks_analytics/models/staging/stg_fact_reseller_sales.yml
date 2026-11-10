@@ -23,9 +23,7 @@ models:
             expression: due_date >= order_date and ship_date >= order_date
       - dbt_utils.expression_is_true:
           arguments:
-            expression:
-              order_date_key = cast(format_date('%Y%m%d', order_date) as int64) and due_date_key = cast(format_date('%Y%m%d',
-              due_date) as int64) and ship_date_key = cast(format_date('%Y%m%d', ship_date) as int64)
+            expression: order_date_key = extract(year from order_date) * 10000 + extract(month from order_date) * 100 + extract(day from order_date) and due_date_key = extract(year from due_date) * 10000 + extract(month from due_date) * 100 + extract(day from due_date) and ship_date_key = extract(year from ship_date) * 10000 + extract(month from ship_date) * 100 + extract(day from ship_date)
     columns:
       - name: sales_order_number
         data_tests:

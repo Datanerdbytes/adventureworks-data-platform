@@ -7,38 +7,38 @@ with source_data as (
 select
     -- 🔑 Primary & Composite Keys
     salesordernumber as sales_order_number,
-    cast(salesorderlinenumber as int64) as sales_order_line_item,
+    cast(salesorderlinenumber as bigint) as sales_order_line_item,
 
     -- Dimension foreign keys
-    cast(productkey as int64) as product_key,
-    cast(resellerkey as int64) as reseller_key,
-    cast(employeekey as int64) as employee_key,
-    cast(currencykey as int64) as currency_key,
-    cast(salesterritorykey as int64) as sales_territory_key,
+    cast(productkey as bigint) as product_key,
+    cast(resellerkey as bigint) as reseller_key,
+    cast(employeekey as bigint) as employee_key,
+    cast(currencykey as bigint) as currency_key,
+    cast(salesterritorykey as bigint) as sales_territory_key,
 
     -- Date dimension keys
-    cast(orderdatekey as int64) as order_date_key,
-    cast(duedatekey as int64) as due_date_key,
-    cast(shipdatekey as int64) as ship_date_key,
+    cast(orderdatekey as bigint) as order_date_key,
+    cast(duedatekey as bigint) as due_date_key,
+    cast(shipdatekey as bigint) as ship_date_key,
 
     -- 👤 Account & Transaction Context
-    cast(promotionkey as int64) as promotion_key,
-    cast(revisionnumber as int64) as revision_number,
+    cast(promotionkey as bigint) as promotion_key,
+    cast(revisionnumber as bigint) as revision_number,
 
     -- 📦 Transaction Quantities
-    cast(orderquantity as int64) as order_quantity,
+    cast(orderquantity as bigint) as order_quantity,
 
     -- Fixed-point financial values for downstream arithmetic.
     -- Casting cannot recover precision already lost in the raw FLOAT64 values.
-    cast(unitprice as numeric) as unit_price,
-    cast(extendedamount as numeric) as extended_amount,
-    cast(unitpricediscountpct as numeric) as unit_price_discount_percentage,
-    cast(discountamount as numeric) as discount_amount,
-    cast(productstandardcost as numeric) as product_standard_cost,
-    cast(totalproductcost as numeric) as total_product_cost,
-    cast(salesamount as numeric) as sales_amount,
-    cast(taxamt as numeric) as tax_amount,
-    cast(freight as numeric) as freight_amount,
+    cast(unitprice as decimal(38, 9)) as unit_price,
+    cast(extendedamount as decimal(38, 9)) as extended_amount,
+    cast(unitpricediscountpct as decimal(38, 9)) as unit_price_discount_percentage,
+    cast(discountamount as decimal(38, 9)) as discount_amount,
+    cast(productstandardcost as decimal(38, 9)) as product_standard_cost,
+    cast(totalproductcost as decimal(38, 9)) as total_product_cost,
+    cast(salesamount as decimal(38, 9)) as sales_amount,
+    cast(taxamt as decimal(38, 9)) as tax_amount,
+    cast(freight as decimal(38, 9)) as freight_amount,
 
     -- 🏷️ Shipping Trackers
     carriertrackingnumber as carrier_tracking_number,

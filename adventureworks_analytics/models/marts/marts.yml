@@ -115,7 +115,7 @@ models:
       - dbt_utils.expression_is_true:
           name: dim_customer_valid_income
           arguments:
-            expression: yearly_income >= 0 and not is_nan(yearly_income) and not is_inf(yearly_income)
+            expression: yearly_income >= 0 and {{ qe_finite_double(['yearly_income']) }}
       - dbt_utils.expression_is_true:
           name: dim_customer_valid_child_counts
           arguments:
@@ -130,7 +130,7 @@ models:
       - dbt_utils.expression_is_true:
           name: dim_customer_valid_email
           arguments:
-            expression: regexp_contains(email_address, r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+            expression: '{{ qe_regexp_contains(''email_address'', ''^[^\s@]+@[^\s@]+\.[^\s@]+$'') }}'
     columns:
       - name: customer_key
         data_tests:
@@ -256,9 +256,7 @@ models:
       - dbt_utils.expression_is_true:
           name: dim_product_valid_financial_values
           arguments:
-            expression:
-              standard_cost >= 0 and list_price >= 0 and not is_nan(standard_cost)
-              and not is_inf(standard_cost) and not is_nan(list_price) and not is_inf(list_price)
+            expression: standard_cost >= 0 and list_price >= 0 and {{ qe_finite_double(['standard_cost', 'list_price']) }}
       - dbt_utils.expression_is_true:
           name: dim_product_valid_markup
           arguments:
@@ -424,7 +422,7 @@ models:
       - dbt_utils.expression_is_true:
           name: dim_reseller_valid_revenue
           arguments:
-            expression: annual_revenue >= 0 and not is_nan(annual_revenue) and not is_inf(annual_revenue)
+            expression: annual_revenue >= 0 and {{ qe_finite_double(['annual_revenue']) }}
       - dbt_utils.expression_is_true:
           name: dim_reseller_valid_employee_count
           arguments:
