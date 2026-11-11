@@ -20,12 +20,12 @@ Do not apply hosted migrations, change real accounts or deploy without authoriza
 
 # Agent Context & Rules
 
-Repository state reviewed: **2026-10-15**. This guide describes checked-in behavior; production configuration and deployment must be verified separately.
+Repository state reviewed: **2026-11-11**. This guide describes checked-in behavior; production configuration and deployment must be verified separately.
 
 ## 1. Project Overview
 
 - **Project Name:** AdventureWorks Analytics (Data Analytics Dashboard)
-- **Core Purpose:** An authenticated, workspace-governed Dash analytics application with BigQuery-backed sales reports, PostgreSQL → BigQuery ingestion, and dbt transformations. Dashboard activity and pipeline monitoring currently include synthetic fixtures; do not describe them as live telemetry.
+- **Core Purpose:** An authenticated, workspace-governed Dash analytics application whose sales reports read a committed DuckDB artifact, plus retained PostgreSQL → BigQuery ingestion and dbt transformation tooling. Dashboard activity and pipeline monitoring currently include synthetic fixtures; do not describe them as live telemetry.
 - **Target Audience:** Internal business analysts, data engineers, and stakeholders.
 
 ## 2. Tech Stack & Environment
@@ -36,16 +36,17 @@ Repository state reviewed: **2026-10-15**. This guide describes checked-in behav
 - **Underlying Engine:** Flask, including Flask-Caching
 - **Authentication:** Supabase Auth with `@supabase/supabase-js`, OAuth PKCE, and Flask server-side authorization
 - **Frontend Build:** Node.js 22+, npm, and esbuild for the authentication bundle
-- **Data Engine:** Google BigQuery via Application Default Credentials (ADC); dbt produces transformation artifacts, while the current monitoring UI uses fixtures
-- **Data Libraries:** `google-cloud-bigquery`, `pandas`, `pandas-gbq`, `pyarrow`, `json`
+- **Data Engine:** DuckDB read-only artifact at `my-dash-app/data/analytics.duckdb`; dbt builds the models offline, while the current monitoring UI uses fixtures
+- **Data Libraries:** `duckdb`, `pandas`, `pyarrow`, `json`; BigQuery libraries remain for explicit ingestion tooling
 - **Caching Framework:** Flask-Caching with FileSystemCache for warehouse results; Redis is required separately for production authentication rate limiting
 - **Styling:** Dash component libraries and modular CSS
 - **Code Quality:** Pinned Ruff, Black, mypy, Bandit, detect-secrets, pip-audit, and pre-commit; Prettier for CSS, JavaScript, JSON, YAML, and Markdown
 
 ## 3. Architecture & File Structure
 
+- `warehouse_client.py` validates and reads the shipped DuckDB artifact with `$name` parameter binding; it is the runtime query seam.
 - `db_connector.py` creates SQLAlchemy connection engines for PostgreSQL and BigQuery using environment configuration.
-- `elt_pipeline.py` extracts AdventureWorks tables from PostgreSQL and loads them into BigQuery.
+- `elt_pipeline.py` extracts AdventureWorks tables from PostgreSQL and loads them into BigQuery as an explicit operator tool.
 - `adventureworks_analytics/` contains the dbt project, with staging models, reporting marts, macros, SQL tests, and documentation.
 - Python dependencies are declared in root `pyproject.toml` and resolved in `uv.lock`.
 - Generated dbt artifacts, including `manifest.json` and `run_results.json`, live in `adventureworks_analytics/target/`.
@@ -60,6 +61,7 @@ Postgres-AdventureWorksDW/
 ├── AGENTS.md
 ├── SECURITY_AUDIT.md           # Keep status aligned with docs/SECURITY_AUDIT.md
 ├── Dockerfile                 # Node auth build → non-root Python/Gunicorn runtime
+├── vercel.json / .vercelignore # Container service routing and upload exclusions
 ├── pyproject.toml / uv.lock
 ├── package.json / package-lock.json
 ├── db_connector.py            # PostgreSQL and BigQuery SQLAlchemy helpers
@@ -75,6 +77,8 @@ Postgres-AdventureWorksDW/
 │   ├── app.py                 # Flask server, auth/cache initialization, Dash shell
 │   ├── auth.py / governance.py / rate_limiter.py
 │   ├── revenue_kpis.py / wholesale_kpis.py / growth_kpis.py / customer_kpis.py
+│   ├── warehouse_client.py     # Read-only DuckDB artifact query seam
+│   ├── data/analytics.duckdb   # Committed runtime reporting artifact
 │   ├── sales_filters.py / customer_map.py
 │   ├── analytics.py / data.py / components.py / theme.py
 │   ├── pages/                 # Overview, four reports, monitoring, tables, workspace/admin, settings
@@ -82,7 +86,7 @@ Postgres-AdventureWorksDW/
 │   ├── assets/                # Modular CSS/JS/icons and generated auth.js
 │   └── map_data/              # Bundled geographic boundaries and provenance
 ├── auth_frontend/             # Supabase session, registration, recovery, CSRF and Node tests
-├── scripts/                   # Auth build, hook runner, bootstrap and explicit DB test tools
+├── scripts/                   # Auth build, artifact export/verify, hook runner and operator tools
 ├── supabase/migrations/       # Governance, email-first registration, verified approvals,
 │                             # access requests and password lockout
 ├── supabase/tests/ / supabase/templates/
@@ -98,16 +102,16 @@ Ignored local state includes `.env`, `gcp-key.json`, `.venv/`, `node_modules/`, 
 ### Current routes and data boundaries
 
 - `/` is the public Flask landing page for visitors without an access cookie; authorized root navigation redirects to `/dashboard`. Authentication, recovery, callback, and access-pending screens are served outside Dash.
-- `/dashboard` shows synthetic activity and pipeline summaries. `/monitoring` currently uses sample runs and does not provide live dbt artifact monitoring. `/tables` uses bounded, read-only BigQuery previews of `dim_product`, `dim_customer`, and `fct_sales`; queries return at most 500 displayed rows with a 100 MiB billing cap. Search, sorting, and pagination apply to the loaded preview, not the full warehouse.
+- `/dashboard` shows synthetic activity and pipeline summaries. `/monitoring` currently uses sample runs and does not provide live dbt artifact monitoring. `/tables` uses bounded, read-only DuckDB previews of `dim_product`, `dim_customer`, and `fct_sales`; queries return at most 500 displayed rows. Search, sorting, and pagination apply to the loaded preview, not the full dataset.
 - `/dashboard/executive`, `/dashboard/wholesale`, `/dashboard/growth`, and `/dashboard/customers` use warehouse loaders for report analytics. Preserve the calendar year, quarter, channel, category, and dependent subcategory filter contract in `sales_filters.py`.
-- Revenue, wholesale, growth, and customer loaders use parameterized read-only BigQuery queries and validated table identifiers. Analytics default to `gold_adventureworks`; wholesale fulfillment also uses `BQ_STAGING_DATASET` (default `silver_adventureworks`). Preserve query billing limits and explicit mart/fact fallbacks.
+- Revenue, wholesale, growth, and customer loaders use parameterized, read-only DuckDB queries through `warehouse_client.query_rows()` and validated table identifiers. The artifact exposes `gold_adventureworks` and `silver_adventureworks` schemas with the former dataset names. Bind only named `$name` parameters the SQL consumes, and preserve explicit mart/fact fallbacks.
 - `/workspace/admin/members` provides permission-scoped workspace/email/role/access filters, ten memberships per page, and a canonical member details/access modal. `/workspace/admin` uses an independent five-event activity pager. Both read paths require migration `202610150001_admin_directory_activity.sql`, applied to hosted project `lcnsbwohtrxrtissvbzl` on 2026-10-15. Authenticated database reads and anonymous execute denial were verified; this does not establish deployment of the application code.
 - `/workspace/admin/create` is the platform-admin-only workspace creation page, opened from Workspace Admin. It validates workspace details and an existing verified owner, then switches to the created workspace through the existing governance RPC.
 - `/workspace` loads the selected workspace summary from Supabase; freshness, saved views, quality, and glossary sections still include labeled fixtures. It never runs ingestion or dbt. `/workspace/admin` performs role-authorized governance operations through RPCs.
 - `/settings` stores browser display preferences. No credentials or warehouse datasets belong in browser stores.
 
 - Keep credentials and `.env` values out of documentation and version control.
-- `elt_pipeline.py` uses `WRITE_TRUNCATE` when loading BigQuery tables; running it replaces destination table data and requires the production confirmation described below.
+- `elt_pipeline.py` uses `WRITE_TRUNCATE` when loading BigQuery tables; running it replaces destination table data and requires the production confirmation described below. It is not part of the app runtime.
 
 ## 4. General Architecture
 
@@ -117,7 +121,7 @@ Ignored local state includes `.env`, `gcp-key.json`, `.venv/`, `node_modules/`, 
 - Use a layout function such as `def serve_layout(): ...` when the layout must be rebuilt on each page load.
 - Filter, aggregate, and paginate data in Python or SQL before sending it to graphs or `AgGrid`. Send only the rows or points needed for the current view.
 - Production Python dependencies and development security tools currently use exact pins in root `pyproject.toml`; preserve those pins and update `uv.lock` when dependencies change.
-- Use explicit BigQuery column names, logical filters, and date/time boundaries where applicable. Include a `LIMIT` during structural testing to control scan costs.
+- Use explicit warehouse column names, logical filters, and date/time boundaries where applicable. Bind values through named parameters and bound previews during structural testing.
 
 ## 5. Callbacks, Data, and Performance
 
@@ -181,7 +185,7 @@ defaultColDef={"filter": True, "sortable": True}
 
 ## 10. Production Safety
 
-- The workspace is connected to the production Google Cloud environment `quantum-echo-data-eng-prod`.
+- The legacy ingestion tooling targets the production Google Cloud environment `quantum-echo-data-eng-prod`; the deployed report runtime reads only the committed DuckDB artifact.
 - Never run destructive commands such as `bq rm`, `dbt clean`, or commands that drop production datasets without explicit, multi-turn user confirmation.
 
 ## 11. Authentication & Access Control
@@ -205,7 +209,7 @@ defaultColDef={"filter": True, "sortable": True}
 - Distinguish Google Cloud's authorized redirect URI (`https://<project-ref>.supabase.co/auth/v1/callback`) from Supabase's allowed app redirect URLs (`<app-origin>/auth/callback`). Do not substitute one for the other.
 - Edit `auth_frontend/` sources, then run `npm ci` and `npm run build:auth`. Never fix authentication by editing only the generated bundle or disabling the server guard. Exclude the bundle from Dash auto-injection and load it exactly once through the index template.
 - Commit the backend, templates, CSS, frontend sources, generated tracked bundle, package manifests, build script, and Docker integration together. Docker builds the bundle in a Node stage and runs only Python/Gunicorn in the final image.
-- After auth changes, run `uv run --locked python scripts/pre_commit_checks.py python-tests` and `npm run test:auth`. The wrapper explicitly selects testing rate limits and clears Redis/proxy settings so local `.env` cannot cause production Redis access. Verify unauthenticated page/data access, approval and confirmation checks, expiry/refresh, logout, OAuth errors, and loading states without querying production BigQuery or creating real accounts.
+- After auth changes, run `uv run --locked python scripts/pre_commit_checks.py python-tests` and `npm run test:auth`. The wrapper explicitly selects testing rate limits and clears Redis/proxy settings so local `.env` cannot cause production Redis access. Verify unauthenticated page/data access, approval and confirmation checks, expiry/refresh, logout, OAuth errors, and loading states without querying a production warehouse or creating real accounts.
 
 ## 12. Local Setup, Verification & CI
 
@@ -242,7 +246,7 @@ uv run --locked pre-commit run --all-files
 - `.github/workflows/dependency-audit.yml` runs on pull requests and pushes to `integration`/`main`, and Mondays at 09:00 UTC (17:00 Manila), with read-only repository permissions. It is security scanning, not an application deployment or the full pre-commit test suite.
 - **Security CI as of 2026-10-15:** the current branch includes `main` commit `8609251`, with an independent pinned Bandit job alongside pip-audit and matching audit status in both reports. Reuse the existing hook configuration when maintaining the workflow.
 - `.github/workflows/auto-pr.yml` publishes a compare link into `main` in the Actions run summary on branch pushes other than `main`/`master`. Open the link while signed in and submit the PR as your account; do not recreate bot-authored PRs with `GITHUB_TOKEN`, whose PR workflows require approval and can expire. The link workflow has no token permissions. Existing fork approval policies and the independent audit checks remain in place. See [PR workflow guidance](docs/pull-request-workflow.md). Use pull requests for changes to protected branches; do not rely on rule bypass privileges.
-- Docker builds auth assets in Node 22, installs locked production Python dependencies, then runs Gunicorn as non-root `appuser` on port 8050 with two workers. Runtime secrets are supplied separately; a successful local scan does not establish a successful deployment.
+- Docker builds auth assets in Node 22, installs locked production Python dependencies, ships `my-dash-app/data/analytics.duckdb`, then runs Gunicorn as non-root `appuser` on port 8050 with two workers. Runtime authentication secrets are supplied separately; a successful local scan does not establish a successful deployment. See [Vercel deployment](docs/vercel-deployment.md).
 
 ## 13. Security State & Operational Boundaries
 
@@ -251,4 +255,4 @@ uv run --locked pre-commit run --all-files
 - Production auth limiting needs shared `RATE_LIMIT_REDIS_URL`; missing or failed storage fails closed. Trust only explicitly configured proxy CIDRs, never blanket forwarded headers. Deployment Redis/proxy validation remains an operational task; see [rate limits](docs/auth-rate-limits.md).
 - Keep `SUPABASE_DB_URL` out of the web service, frontend, container build, logs, and tracked files. Bootstrap is CLI-only and enforces a TCP host, certificate/hostname verification (`verify-full`), and negotiated TLS before SQL. See [bootstrap credential runbook](docs/bootstrap-credentials.md). Production credential rotation remains pending separate operator authorization and evidence.
 - ELT `--dry-run` performs preflight without clients, source reads, or writes. Production execution requires both `--confirm-production` and an exact `--destination project.dataset`, in addition to multi-turn human authorization. Never use real ELT as a test; see [ELT safety](docs/elt-safety.md).
-- Do not run `scripts/test_governance_db.py`, bootstrap, migrations, live account creation, warehouse queries, or production credential operations as part of the offline test suite. Repository tests and scans do not prove live Supabase, warehouse, browser, or deployment behavior.
+- Do not run `scripts/test_governance_db.py`, bootstrap, migrations, live account creation, live warehouse queries, or production credential operations as part of the offline test suite. Repository tests and scans do not prove live Supabase, warehouse, browser, or deployment behavior.

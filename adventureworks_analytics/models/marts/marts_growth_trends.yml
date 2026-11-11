@@ -21,12 +21,12 @@ models:
           name: growth_trends_quarter_matches_month
           arguments:
             expression: >-
-              calendar_quarter_name = concat('Q', cast(cast(ceil(month_number / 3.0) as int64) as string))
+              calendar_quarter_name = concat('Q', cast(cast(ceil(month_number / 3.0) as bigint) as string))
       - dbt_utils.expression_is_true:
           name: growth_trends_month_name_matches_number
           arguments:
             expression: >-
-              month_name = format_date('%B', date(2000, month_number, 1))
+              month_name = case when month_number = 1 then 'January' when month_number = 2 then 'February' when month_number = 3 then 'March' when month_number = 4 then 'April' when month_number = 5 then 'May' when month_number = 6 then 'June' when month_number = 7 then 'July' when month_number = 8 then 'August' when month_number = 9 then 'September' when month_number = 10 then 'October' when month_number = 11 then 'November' when month_number = 12 then 'December' end
     columns:
       - name: calendar_year
         data_tests:

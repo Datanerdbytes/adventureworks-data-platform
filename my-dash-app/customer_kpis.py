@@ -7,16 +7,16 @@ customer-state/month grain, so compute non-additive KPIs from their source facts
 
 from warehouse_cache import warehouse_memoize
 
-from google.cloud import bigquery
 from revenue_kpis import cache, filter_parameters
 from revenue_kpis import (
     validate_warehouse_identifiers as validate_warehouse_identifiers,
 )
+from warehouse_client import query_rows
 
 
 def customer_cohort_ctes(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     WITH history AS (
       SELECT s.customer_key, s.sales_channel, s.sales_order_number,
              d.calendar_date AS order_date, d.calendar_year, d.calendar_quarter_name,
@@ -26,41 +26,46 @@ def customer_cohort_ctes(project, dataset):
              COALESCE(NULLIF(TRIM(t.territory_group), ''), 'Unknown') AS territory,
              COALESCE(p.category_name, 'Unknown') AS category,
              COALESCE(p.subcategory_name, 'Unknown') AS subcategory
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      LEFT JOIN `{project}.{dataset}.dim_customer` c ON s.customer_key = c.customer_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-      LEFT JOIN `{project}.{dataset}.dim_sales_territory` t
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_customer c ON s.customer_key = c.customer_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      LEFT JOIN gold_adventureworks.dim_sales_territory t
         ON s.sales_territory_key = t.sales_territory_key
     ), scoped AS (
       SELECT * FROM history
-      WHERE (@channel IS NULL OR sales_channel = @channel)
-        AND (@category IS NULL OR category = @category)
-        AND (@subcategory IS NULL OR subcategory = @subcategory)
+      WHERE ($channel IS NULL OR sales_channel = $channel)
+        AND ($category IS NULL OR category = $category)
+        AND ($subcategory IS NULL OR subcategory = $subcategory)
     ), selected AS (
       SELECT * FROM scoped
-      WHERE (@year IS NULL OR calendar_year = @year)
-        AND (@quarter IS NULL OR calendar_quarter_name = @quarter)
+      WHERE ($year IS NULL OR calendar_year = $year)
+        AND ($quarter IS NULL OR calendar_quarter_name = $quarter)
     ), reporting_dates AS (
       SELECT MAX(order_date) AS latest_selected FROM history
-      WHERE (@year IS NULL OR calendar_year = @year)
-        AND (@quarter IS NULL OR calendar_quarter_name = @quarter)
+      WHERE ($year IS NULL OR calendar_year = $year)
+        AND ($quarter IS NULL OR calendar_quarter_name = $quarter)
     ), cutoff AS (
       SELECT LEAST(
         (SELECT MAX(order_date) FROM history),
-        CASE WHEN @quarter IS NOT NULL THEN LAST_DAY(latest_selected, QUARTER)
-             WHEN @year IS NOT NULL THEN LAST_DAY(latest_selected, YEAR)
-             ELSE latest_selected END
+        CAST(CASE
+          WHEN $quarter IS NOT NULL THEN
+            CAST(date_trunc('quarter', latest_selected) AS DATE)
+            + INTERVAL 3 MONTH - INTERVAL 1 DAY
+          WHEN $year IS NOT NULL THEN
+            CAST(date_trunc('year', latest_selected) AS DATE)
+            + INTERVAL 1 YEAR - INTERVAL 1 DAY
+          ELSE latest_selected END AS DATE)
       ) AS as_of FROM reporting_dates
     ), acquired AS (
       SELECT c.customer_key, COALESCE(c.date_first_purchase, MIN(h.order_date)) AS acquired_on
-      FROM `{project}.{dataset}.dim_customer` c
+      FROM gold_adventureworks.dim_customer c
       LEFT JOIN history h ON c.customer_key = h.customer_key AND h.sales_channel = 'Internet'
       GROUP BY c.customer_key, c.date_first_purchase
     ), cohort AS (
       SELECT DISTINCT a.customer_key, a.acquired_on FROM acquired a CROSS JOIN cutoff
-      WHERE a.acquired_on <= as_of AND (@channel IS NULL OR @channel = 'Internet')
-        AND ((@category IS NULL AND @subcategory IS NULL) OR EXISTS (
+      WHERE a.acquired_on <= as_of AND ($channel IS NULL OR $channel = 'Internet')
+        AND (($category IS NULL AND $subcategory IS NULL) OR EXISTS (
           SELECT 1 FROM scoped s WHERE s.customer_key = a.customer_key
             AND s.sales_channel = 'Internet' AND s.order_date <= as_of))
     )
@@ -78,20 +83,22 @@ def customer_scorecards_sql(project, dataset):
       SELECT territory, SUM(sales_amount) AS revenue FROM selected GROUP BY 1
     ), state_orders AS (
       SELECT state, country,
-        COUNT(DISTINCT IF(DATE_TRUNC(order_date, MONTH) = DATE_TRUNC(as_of, MONTH),
-          sales_order_number, NULL)) AS current_orders,
-        COUNT(DISTINCT IF(DATE_TRUNC(order_date, MONTH) = DATE_SUB(DATE_TRUNC(as_of, MONTH), INTERVAL 1 MONTH),
-          sales_order_number, NULL)) AS previous_orders
+        COUNT(DISTINCT CASE WHEN CAST(date_trunc('month', order_date) AS DATE) = CAST(date_trunc('month', as_of) AS DATE)
+          THEN sales_order_number END) AS current_orders,
+        COUNT(DISTINCT CASE WHEN CAST(date_trunc('month', order_date) AS DATE) = CAST(date_trunc('month', as_of) AS DATE) - INTERVAL 1 MONTH
+          THEN sales_order_number END) AS previous_orders
       FROM scoped CROSS JOIN cutoff
       WHERE sales_channel = 'Internet' AND customer_key IS NOT NULL AND state != 'Unknown'
-        AND order_date BETWEEN DATE_SUB(DATE_TRUNC(as_of, MONTH), INTERVAL 1 MONTH) AND as_of
+        AND order_date >= CAST(date_trunc('month', as_of) AS DATE) - INTERVAL 1 MONTH
+        AND order_date <= as_of
       GROUP BY 1, 2
     ), state_baseline AS (
       SELECT EXISTS (SELECT 1 FROM history CROSS JOIN cutoff
         WHERE sales_channel = 'Internet'
-          AND DATE_TRUNC(order_date, MONTH) = DATE_SUB(DATE_TRUNC(as_of, MONTH), INTERVAL 1 MONTH)) AS available
+          AND CAST(date_trunc('month', order_date) AS DATE) =
+              CAST(date_trunc('month', as_of) AS DATE) - INTERVAL 1 MONTH) AS available
     ), state_growth AS (
-      SELECT *, current_orders - previous_orders AS increase FROM state_orders
+      SELECT *, CAST(current_orders AS BIGINT) - CAST(previous_orders AS BIGINT) AS increase FROM state_orders
       WHERE current_orders > previous_orders
         AND (SELECT available FROM state_baseline)
     )
@@ -100,11 +107,16 @@ def customer_scorecards_sql(project, dataset):
       (SELECT COUNT(*) FROM cohort) AS customers,
       (SELECT COALESCE(SUM(s.sales_amount), 0) FROM scoped s JOIN cohort c USING (customer_key)
         WHERE s.sales_channel = 'Internet' AND s.order_date <= (SELECT as_of FROM cutoff)) AS customer_revenue,
-      (SELECT COUNTIF(DATE_DIFF(as_of, last_order, DAY) > 180) FROM last_orders CROSS JOIN cutoff) AS dormant,
+      (SELECT COUNT(*) FILTER (WHERE date_diff('day', last_order, as_of) > 180)
+        FROM last_orders CROSS JOIN cutoff) AS dormant,
       (SELECT as_of FROM cutoff) AS as_of,
-      (SELECT AS STRUCT territory, revenue FROM territories ORDER BY revenue DESC, territory LIMIT 1) AS top_territory,
-      (SELECT AS STRUCT state, country, increase, current_orders, previous_orders FROM state_growth
-        ORDER BY increase DESC, state, country LIMIT 1) AS top_state
+      (SELECT territory FROM territories ORDER BY revenue DESC, territory LIMIT 1) AS top_territory_name,
+      (SELECT revenue FROM territories ORDER BY revenue DESC, territory LIMIT 1) AS top_territory_revenue,
+      (SELECT state FROM state_growth ORDER BY increase DESC, state, country LIMIT 1) AS top_state_state,
+      (SELECT country FROM state_growth ORDER BY increase DESC, state, country LIMIT 1) AS top_state_country,
+      (SELECT increase FROM state_growth ORDER BY increase DESC, state, country LIMIT 1) AS top_state_increase,
+      (SELECT current_orders FROM state_growth ORDER BY increase DESC, state, country LIMIT 1) AS top_state_current,
+      (SELECT previous_orders FROM state_growth ORDER BY increase DESC, state, country LIMIT 1) AS top_state_previous
     LIMIT 1
     """  # nosec B608
 
@@ -120,51 +132,61 @@ def load_customer_scorecards(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            customer_scorecards_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            return dict(next(iter(job.result(timeout=20))))
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    row = query_rows(customer_scorecards_sql(project, dataset), parameters)[0]
+    # BigQuery returned SELECT AS STRUCT fields as nested dicts; the flat
+    # columns here package into the same shapes for the page code.
+    row["top_territory"] = (
+        None
+        if row["top_territory_name"] is None
+        else {
+            "territory": row["top_territory_name"],
+            "revenue": row["top_territory_revenue"],
+        }
+    )
+    row["top_state"] = (
+        None
+        if row["top_state_state"] is None
+        else {
+            "state": row["top_state_state"],
+            "country": row["top_state_country"],
+            "increase": row["top_state_increase"],
+            "current_orders": row["top_state_current"],
+            "previous_orders": row["top_state_previous"],
+        }
+    )
+    return row
 
 
 def customer_demographics_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     WITH dates AS (
       SELECT MAX(d.calendar_date) AS as_of
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      WHERE (@year IS NULL OR d.calendar_year = @year)
-        AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      WHERE ($year IS NULL OR d.calendar_year = $year)
+        AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
     ), customers AS (
       SELECT DISTINCT s.customer_key,
         COALESCE(NULLIF(TRIM(c.country_region_name), ''), 'Unknown') AS region,
         c.birth_date, dates.as_of
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      LEFT JOIN `{project}.{dataset}.dim_customer` c ON s.customer_key = c.customer_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_customer c ON s.customer_key = c.customer_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
       CROSS JOIN dates
       WHERE s.sales_channel = 'Internet' AND s.customer_key IS NOT NULL
-        AND (@channel IS NULL OR s.sales_channel = @channel)
-        AND (@year IS NULL OR d.calendar_year = @year)
-        AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-        AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-        AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+        AND ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($year IS NULL OR d.calendar_year = $year)
+        AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
     ), ages AS (
-      SELECT *, DATE_DIFF(as_of, birth_date, YEAR) -
-        IF(FORMAT_DATE('%m%d', as_of) < FORMAT_DATE('%m%d', birth_date), 1, 0) AS age
+      SELECT *,
+        date_diff('year', birth_date, as_of) -
+        CASE WHEN strftime(as_of, '%m%d') < strftime(birth_date, '%m%d')
+             THEN 1 ELSE 0 END AS age
       FROM customers
     )
     SELECT region,
@@ -189,22 +211,8 @@ def load_customer_demographics(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            customer_demographics_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    rows = query_rows(customer_demographics_sql(project, dataset), parameters)
     if len(rows) > 1000:
         raise ValueError("Demographic result exceeds supported range")
     return rows
@@ -213,25 +221,25 @@ def load_customer_demographics(
 def customer_map_sql(project, dataset, use_mart=False):
     validate_warehouse_identifiers(project, dataset)
     if use_mart:
-        return f"""SELECT territory_group, territory_country AS country,
+        return """SELECT territory_group, territory_country AS country,
           customer_state_province AS state, SUM(gross_revenue_amount) AS revenue
-          FROM `{project}.{dataset}.marts_demographic_regional_insights`
-          WHERE (@channel IS NULL OR sales_channel = @channel)
+          FROM gold_adventureworks.marts_demographic_regional_insights
+          WHERE ($channel IS NULL OR sales_channel = $channel)
           GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""  # nosec B608
-    return f"""SELECT t.territory_group, t.territory_country AS country,
+    return """SELECT t.territory_group, t.territory_country AS country,
       CASE WHEN s.sales_channel = 'Reseller' THEN 'Wholesale/Reseller'
            ELSE COALESCE(NULLIF(TRIM(c.state_province_name), ''), 'Unknown') END AS state,
       SUM(s.sales_amount) AS revenue
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      JOIN `{project}.{dataset}.dim_sales_territory` t ON s.sales_territory_key = t.sales_territory_key
-      LEFT JOIN `{project}.{dataset}.dim_customer` c ON s.customer_key = c.customer_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-      WHERE (@year IS NULL OR d.calendar_year = @year)
-        AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-        AND (@channel IS NULL OR s.sales_channel = @channel)
-        AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-        AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      JOIN gold_adventureworks.dim_sales_territory t ON s.sales_territory_key = t.sales_territory_key
+      LEFT JOIN gold_adventureworks.dim_customer c ON s.customer_key = c.customer_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      WHERE ($year IS NULL OR d.calendar_year = $year)
+        AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+        AND ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
       GROUP BY 1,2,3 ORDER BY 1,2,3 LIMIT 2001"""  # nosec B608
 
 
@@ -246,34 +254,16 @@ def load_customer_map(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    from google.api_core.exceptions import NotFound
-
-    with bigquery.Client(project=project) as client:
-        use_mart = all(
-            value is None for value in (year, quarter, category, subcategory)
+    # All product/calendar filters set break the mart's grain, so use facts.
+    use_mart = all(value is None for value in (year, quarter, category, subcategory))
+    # The join-based fallback binds every filter; the mart branch binds channel.
+    sql = customer_map_sql(project, dataset, use_mart)
+    if use_mart:
+        rows = query_rows(sql, {"channel": channel})
+    else:
+        rows = query_rows(
+            sql, filter_parameters(year, quarter, channel, category, subcategory)
         )
-        if use_mart:
-            try:
-                client.get_table(
-                    f"{project}.{dataset}.marts_demographic_regional_insights"
-                )
-            except NotFound:
-                use_mart = False
-        job = client.query(
-            customer_map_sql(project, dataset, use_mart),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
     if len(rows) > 2000:
         raise ValueError("Too many geographic segments")
     return rows
@@ -292,8 +282,8 @@ def customer_lifecycle_sql(project, dataset):
       GROUP BY c.customer_key, c.acquired_on, cutoff.as_of
     ), lifecycle AS (
       SELECT customer_key, as_of,
-        CASE WHEN DATE_DIFF(as_of, last_order, DAY) > 180 THEN 'Dormant'
-             WHEN DATE_DIFF(as_of, last_order, DAY) > 90 THEN 'Slipping Account'
+        CASE WHEN date_diff('day', last_order, as_of) > 180 THEN 'Dormant'
+             WHEN date_diff('day', last_order, as_of) > 90 THEN 'Slipping Account'
              WHEN orders > 1 THEN 'Active Repeat'
              ELSE 'New Cohort' END AS stage
       FROM activity
@@ -314,22 +304,8 @@ def load_customer_lifecycle(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            customer_lifecycle_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            return [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    return query_rows(customer_lifecycle_sql(project, dataset), parameters)
 
 
 DEMOGRAPHIC_DIMENSIONS = {
@@ -348,16 +324,16 @@ def customer_segment_revenue_sql(project, dataset, dimension):
     # Only server-owned expressions may enter SQL; never interpolate a UI value.
     expression = DEMOGRAPHIC_DIMENSIONS[dimension]
     return f"""SELECT {expression} AS segment, SUM(s.sales_amount) AS revenue
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      LEFT JOIN `{project}.{dataset}.dim_customer` c ON s.customer_key = c.customer_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_customer c ON s.customer_key = c.customer_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
       WHERE s.sales_channel = 'Internet' AND s.customer_key IS NOT NULL
-        AND (@channel IS NULL OR s.sales_channel = @channel)
-        AND (@year IS NULL OR d.calendar_year = @year)
-        AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-        AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-        AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+        AND ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($year IS NULL OR d.calendar_year = $year)
+        AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
       GROUP BY 1 ORDER BY revenue DESC, segment LIMIT 101"""  # nosec B608
 
 
@@ -373,22 +349,10 @@ def load_customer_segment_revenue(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            customer_segment_revenue_sql(project, dataset, dimension),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    rows = query_rows(
+        customer_segment_revenue_sql(project, dataset, dimension), parameters
+    )
     if len(rows) > 100:
         raise ValueError("Too many demographic segments")
     return rows
@@ -402,7 +366,7 @@ def customer_ledger_sql(project, dataset):
       SELECT territory_country AS country,
         CASE WHEN COUNT(DISTINCT territory_group) = 1 THEN MIN(territory_group)
              ELSE 'Unknown' END AS territory
-      FROM `{project}.{dataset}.dim_sales_territory` GROUP BY 1
+      FROM gold_adventureworks.dim_sales_territory GROUP BY 1
     ), customer_sales AS (
       SELECT s.customer_key, SUM(s.sales_amount) AS revenue,
         COUNT(DISTINCT s.sales_order_number) AS orders
@@ -420,10 +384,10 @@ def customer_ledger_sql(project, dataset):
         {income} AS income,
         COALESCE(NULLIF(TRIM(c.occupation), ''), 'Unknown') AS occupation,
         COALESCE(s.revenue, 0) AS revenue, COALESCE(s.orders, 0) AS orders,
-        CASE WHEN DATE_DIFF(as_of, COALESCE(l.last_order, a.acquired_on), DAY) > 180
+        CASE WHEN date_diff('day', COALESCE(l.last_order, a.acquired_on), as_of) > 180
              THEN 1 ELSE 0 END AS dormant,
         cutoff.as_of
-      FROM cohort a JOIN `{project}.{dataset}.dim_customer` c USING (customer_key)
+      FROM cohort a JOIN gold_adventureworks.dim_customer c USING (customer_key)
       CROSS JOIN cutoff
       LEFT JOIN country_groups g ON TRIM(c.country_region_name) = g.country
       LEFT JOIN customer_sales s USING (customer_key)
@@ -465,22 +429,8 @@ def load_customer_ledger(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            customer_ledger_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    rows = query_rows(customer_ledger_sql(project, dataset), parameters)
     if len(rows) > 1000:
         raise ValueError("Too many regional ledger rows")
     return rows

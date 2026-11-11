@@ -12,9 +12,11 @@ with versions as (
 )
 select *
 from versions
+{% set next_column = "next_start" %}
+{% set valid_column = "valid_to_date" %}
 where (next_start is null and valid_to_date is not null)
    or (next_start is not null and (
        valid_to_date is null
-       or date_diff(next_start, valid_to_date, day) != 1
+       or {{ qe_date_diff(next_column, valid_column, 'DAY') }} != 1
    ))
 {% endtest %}

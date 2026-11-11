@@ -1,0 +1,79 @@
+name: Vercel Deploy
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-${{ github.ref }}-${{ inputs.target || 'push' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (${{ inputs.target || 'preview' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@64.2.0
+
+      - name: Verify deployment secrets are configured
+        run: |
+          missing=0
+          for secret in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [[ -z "$(eval "echo \${$secret:-}")" ]]; then
+              echo "::error::Repository secret $secret is not set. See docs/vercel-deployment.md."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Deploy
+        run: |
+          flag=""
+          label="preview"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.target }}" == "production" ]]; then
+            flag="--prod"
+            label="production"
+          fi
+          vercel deploy $flag --yes --token "$VERCEL_TOKEN" --wait 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' deploy.log | tail -n 1 || true)
+          {
+            echo "### Vercel $label deployment"
+            if [[ -n "$url" ]]; then
+              echo "Deployment URL: $url"
+            else
+              echo "Deployment finished; open the run log for the URL."
+            fi
+            echo ""
+            echo "Production traffic is only updated by a manual run of this"
+            echo "workflow with target \`production\`."
+          } >> "$GITHUB_STEP_SUMMARY"

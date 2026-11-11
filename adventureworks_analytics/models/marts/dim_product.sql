@@ -44,7 +44,7 @@ select
     -- 📆 Administrative Tracking Timelines
     valid_from_date,
     -- Inclusive end date; the last version remains open-ended.
-    date_sub(next_valid_from_date, interval 1 day) as valid_to_date,
+    {{ qe_date_sub_day('next_valid_from_date') }} as valid_to_date,
     current_status
 
 from finished_product_versions

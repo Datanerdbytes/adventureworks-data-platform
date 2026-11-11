@@ -4,8 +4,8 @@ with source_data as (
 
 select
     -- 🔑 Primary Key
-    cast(customerkey as int64) as customer_key,
-    cast(geographykey as int64) as geography_key,
+    cast(customerkey as bigint) as customer_key,
+    cast(geographykey as bigint) as geography_key,
 
     -- 👤 Demographics & Identifiers
     customeralternatekey as customer_id,
@@ -29,9 +29,9 @@ select
     emailaddress as email_address,
 
     -- 💰 Financial Context
-    cast(yearlyincome as float64) as yearly_income,
-    cast(totalchildren as int64) as total_children,
-    cast(numberchildrenathome as int64) as children_at_home,
+    cast(yearlyincome as double) as yearly_income,
+    cast(totalchildren as bigint) as total_children,
+    cast(numberchildrenathome as bigint) as children_at_home,
 
     englisheducation as education_level,
     englishoccupation as occupation,

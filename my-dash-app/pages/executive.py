@@ -526,7 +526,7 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
         first,
         second,
         detail,
-        f"BigQuery · Fetched {values['fetched_at']} · Cached for up to 60 seconds. Orders count distinct channel/order pairs. AOV is selected-product revenue per purchasing order.",
+        f"Warehouse artifact · Fetched {values['fetched_at']} · Cached for up to 60 seconds. Orders count distinct channel/order pairs. AOV is selected-product revenue per purchasing order.",
     )
 
 

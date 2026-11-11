@@ -1,10 +1,11 @@
 """Offline SQL identifier and authenticated transport boundary regressions."""
 
+from contextlib import ExitStack
 import inspect
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from urllib.request import Request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
@@ -41,7 +42,20 @@ class WarehouseBoundaryTests(unittest.TestCase):
                             kwargs[parameter.name] = None
                     yield name, function, kwargs
 
-    def test_all_builders_and_loaders_reject_identifier_injection_before_clients(self):
+    def warehouse_queries_disabled(self):
+        """Fail if any loader reaches the artifact before validation."""
+        stack = ExitStack()
+        for module in (revenue_kpis, customer_kpis, growth_kpis, wholesale_kpis):
+            stack.enter_context(
+                patch.object(
+                    module,
+                    "query_rows",
+                    side_effect=AssertionError("warehouse query ran"),
+                )
+            )
+        return stack
+
+    def test_all_builders_and_loaders_reject_identifier_injection_before_queries(self):
         for name, function, kwargs in self.functions():
             for project, dataset in (
                 ("bad`project", "safe_dataset"),
@@ -50,11 +64,10 @@ class WarehouseBoundaryTests(unittest.TestCase):
             ):
                 with (
                     self.subTest(function=name, project=project, dataset=dataset),
-                    patch("google.cloud.bigquery.Client") as client,
+                    self.warehouse_queries_disabled(),
                 ):
                     with self.assertRaises(ValueError):
                         function(project, dataset, **kwargs)
-                    client.assert_not_called()
 
     def test_staging_dataset_is_guarded_on_builder_and_loader(self):
         for function in (
@@ -63,11 +76,10 @@ class WarehouseBoundaryTests(unittest.TestCase):
         ):
             with (
                 self.subTest(function=function.__name__),
-                patch("google.cloud.bigquery.Client") as client,
+                self.warehouse_queries_disabled(),
             ):
                 with self.assertRaises(ValueError):
                     function("test-project", "gold_adventureworks", "silver`; SELECT 1")
-                client.assert_not_called()
 
     def test_customer_dimension_remains_server_allowlisted(self):
         with self.assertRaises(KeyError):
@@ -77,22 +89,33 @@ class WarehouseBoundaryTests(unittest.TestCase):
 
     def test_hostile_filter_values_are_bound_without_changing_sql(self):
         marker = "Bikes' OR 1=1 --"
-        expected = revenue_kpis.executive_sql("test-project", "safe_dataset")
-        row = {"source_rows": 1, "gross_revenue_amount": 1}
-        client = MagicMock()
-        client.query.return_value.result.return_value = [row]
-        with patch("google.cloud.bigquery.Client") as factory:
-            factory.return_value.__enter__.return_value = client
-            # Execute the uncached loader to inspect the actual job configuration.
+        expected = revenue_kpis.executive_financials_sql("test-project", "safe_dataset")
+        calls = []
+
+        def query(sql, parameters=None):
+            calls.append((sql, parameters))
+            if len(calls) == 1:
+                return [
+                    {
+                        "source_rows": 1,
+                        "gross_revenue_amount": 1,
+                        "gross_profit_amount": 1,
+                        "gross_profit_margin_percentage": 100,
+                    }
+                ]
+            if "total_orders_count" in sql:
+                return [{"total_orders_count": 1}]
+            return []
+
+        with patch.object(revenue_kpis, "query_rows", side_effect=query):
+            # Execute the uncached loader to inspect the actual bound values.
             revenue_kpis._load_executive_report.__wrapped__(
                 "test-project", "safe_dataset", category=marker
             )
-        args = client.query.call_args
-        self.assertEqual(args.args[0], expected)
-        self.assertNotIn(marker, args.args[0])
-        parameters = {p.name: p for p in args.kwargs["job_config"].query_parameters}
-        self.assertEqual(parameters["category"].value, marker)
-        self.assertEqual(parameters["category"].type_, "STRING")
+        sql, parameters = calls[0]
+        self.assertEqual(sql, expected)
+        self.assertNotIn(marker, sql)
+        self.assertEqual(parameters["category"], marker)
 
 
 class GovernanceTransportTests(unittest.TestCase):

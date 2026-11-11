@@ -1,7 +1,4 @@
-import re
-import sqlite3
 import unittest
-from datetime import date
 from unittest.mock import patch
 from test_customer_kpis import CATALOG, ALL
 from customer_kpis import customer_ledger_sql
@@ -10,43 +7,30 @@ from pages.customers import (
     customer_ledger_card,
     export_customer_ledger,
 )
+from warehouse_fixture import connect, rows as fetch_rows
 from dash.exceptions import PreventUpdate
 
 
 class CustomerLedgerTests(unittest.TestCase):
     def test_customer_weighted_modes_geography_and_order_grain(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.row_factory = sqlite3.Row
-        db.create_function(
-            "DATE_DIFF",
-            3,
-            lambda a, b, u: (date.fromisoformat(a) - date.fromisoformat(b)).days,
-        )
-        db.create_function("LAST_DAY", 2, lambda value, unit: value)
-        db.executescript("""
-        CREATE TABLE fct_sales(customer_key,sales_channel,sales_order_number,order_date_key,sales_amount,product_key,sales_territory_key);
-        CREATE TABLE dim_date(date_key,calendar_date,calendar_year,calendar_quarter_name);
-        CREATE TABLE dim_customer(customer_key,state_province_name,country_region_name,date_first_purchase,yearly_income,occupation);
-        CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-        CREATE TABLE dim_sales_territory(sales_territory_key,territory_group,territory_country);
-        INSERT INTO dim_date VALUES (1,'2026-01-01',2026,'Q1'),(2,'2026-07-01',2026,'Q3');
-        INSERT INTO dim_customer VALUES (1,'Same State','US','2026-01-01',100000,'Professional'),(2,'Same State','US','2026-01-01',20000,'Manual'),(3,'Same State','US','2026-01-01',20000,'Manual'),(4,'Same State','CA','2026-01-01',NULL,NULL);
+        db = connect("""
+        CREATE TABLE fct_sales(customer_key INTEGER,sales_channel VARCHAR,sales_order_number VARCHAR,order_date_key INTEGER,sales_amount DOUBLE,product_key INTEGER,sales_territory_key INTEGER);
+        CREATE TABLE dim_date(date_key INTEGER,calendar_date DATE,calendar_year INTEGER,calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_customer(customer_key INTEGER,state_province_name VARCHAR,country_region_name VARCHAR,date_first_purchase DATE,yearly_income DOUBLE,occupation VARCHAR);
+        CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+        CREATE TABLE dim_sales_territory(sales_territory_key INTEGER,territory_group VARCHAR,territory_country VARCHAR);
+        INSERT INTO dim_date VALUES (1,DATE '2026-01-01',2026,'Q1'),(2,DATE '2026-07-01',2026,'Q3');
+        INSERT INTO dim_customer VALUES (1,'Same State','US',DATE '2026-01-01',100000,'Professional'),(2,'Same State','US',DATE '2026-01-01',20000,'Manual'),(3,'Same State','US',DATE '2026-01-01',20000,'Manual'),(4,'Same State','CA',DATE '2026-01-01',NULL,NULL);
         INSERT INTO dim_product VALUES (1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
         INSERT INTO dim_sales_territory VALUES (1,'North America','US'),(2,'North America','US'),(3,'North America','CA');
         INSERT INTO fct_sales VALUES (1,'Internet','A',1,10,1,1),(1,'Internet','A',1,15,1,1),(1,'Internet','B',1,20,1,1),(1,'Internet','C',2,30,2,1),(2,'Internet','D',1,40,1,1),(3,'Internet','E',1,50,1,1);
         """)
-        sql = re.sub(r"`p.d.(\w+)`", r"\1", customer_ledger_sql("p", "d"))
-        sql = (
-            sql.replace("LEAST(", "MIN(")
-            .replace(", QUARTER)", ", 'QUARTER')")
-            .replace(", YEAR)", ", 'YEAR')")
-            .replace(", DAY)", ", 'DAY')")
-        )
+        self.addCleanup(db.close)
+        sql = customer_ledger_sql("p", "d")
         params = dict(
             year=None, quarter=None, channel=None, category=None, subcategory=None
         )
-        rows = [dict(r) for r in db.execute(sql, params)]
+        rows = fetch_rows(db, sql, params)
         us = next(r for r in rows if r["country"] == "US")
         self.assertEqual(
             len(rows), 2
@@ -59,13 +43,15 @@ class CustomerLedgerTests(unittest.TestCase):
         )  # profiles, not transaction frequency
         self.assertEqual(us["dormant"], 2)
         bike = next(
-            dict(r)
-            for r in db.execute(sql, params | dict(category="Bikes"))
-            if r["country"] == "US"
+            row
+            for row in fetch_rows(db, sql, params | dict(category="Bikes"))
+            if row["country"] == "US"
         )
         self.assertEqual(bike["revenue"], 135)
         self.assertEqual(bike["dormant"], 2)  # recent Clothing order prevents dormancy
-        self.assertEqual(list(db.execute(sql, params | dict(channel="Reseller"))), [])
+        self.assertEqual(
+            db.execute(sql, params | dict(channel="Reseller")).fetchall(), []
+        )
 
     def test_callback_and_export_contract(self):
         row = dict(

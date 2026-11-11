@@ -1,5 +1,3 @@
-import re
-import sqlite3
 import unittest
 from datetime import date, timedelta
 from unittest.mock import patch
@@ -7,28 +5,22 @@ from unittest.mock import patch
 from test_customer_kpis import CATALOG, ALL
 from customer_kpis import customer_lifecycle_sql
 from pages.customers import lifecycle_figure, populate_customer_chart, LIFECYCLE_STAGES
+from warehouse_fixture import connect
 from dash.exceptions import PreventUpdate
 
 
 class LifecycleTests(unittest.TestCase):
     def test_history_boundaries_and_distinct_invoices(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.create_function(
-            "DATE_DIFF",
-            3,
-            lambda a, b, unit: (date.fromisoformat(a) - date.fromisoformat(b)).days,
-        )
-        db.create_function("LAST_DAY", 2, lambda value, unit: value)
-        db.executescript("""
-          CREATE TABLE fct_sales(customer_key,sales_channel,sales_order_number,order_date_key,sales_amount,product_key,sales_territory_key);
-          CREATE TABLE dim_date(date_key,calendar_date,calendar_year,calendar_quarter_name);
-          CREATE TABLE dim_customer(customer_key,state_province_name,country_region_name,date_first_purchase);
-          CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-          CREATE TABLE dim_sales_territory(sales_territory_key,territory_group);
+        db = connect("""
+          CREATE TABLE fct_sales(customer_key INTEGER,sales_channel VARCHAR,sales_order_number VARCHAR,order_date_key INTEGER,sales_amount DOUBLE,product_key INTEGER,sales_territory_key INTEGER);
+          CREATE TABLE dim_date(date_key INTEGER,calendar_date DATE,calendar_year INTEGER,calendar_quarter_name VARCHAR);
+          CREATE TABLE dim_customer(customer_key INTEGER,state_province_name VARCHAR,country_region_name VARCHAR,date_first_purchase DATE);
+          CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+          CREATE TABLE dim_sales_territory(sales_territory_key INTEGER,territory_group VARCHAR);
           INSERT INTO dim_product VALUES (1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
           INSERT INTO dim_sales_territory VALUES (1,'North America');
         """)
+        self.addCleanup(db.close)
         cutoff = date(2026, 7, 1)
         for key, days in enumerate([0, 90, 91, 180, 181], 1):
             d = cutoff - timedelta(days=days)
@@ -40,28 +32,22 @@ class LifecycleTests(unittest.TestCase):
             # Duplicate invoice lines must not turn a first-time buyer into a repeat buyer.
             for _ in range(2):
                 db.execute(
-                    'INSERT INTO fct_sales VALUES (?,"Internet",?,?,10,1,1)',
+                    "INSERT INTO fct_sales VALUES (?,'Internet',?,?,10,1,1)",
                     (key, str(key), key),
                 )
-        db.execute('INSERT INTO fct_sales VALUES (1,"Internet","repeat",1,10,2,1)')
+        db.execute("INSERT INTO fct_sales VALUES (1,'Internet','repeat',1,10,2,1)")
         db.execute(
             "INSERT INTO dim_customer VALUES (6,NULL,NULL,?)",
             ((cutoff - timedelta(days=181)).isoformat(),),
         )
-        db.execute('INSERT INTO dim_customer VALUES (7,NULL,NULL,"2027-01-01")')
-        sql = re.sub(r"`p.d.(\w+)`", r"\1", customer_lifecycle_sql("p", "d"))
-        sql = (
-            sql.replace("LEAST(", "MIN(")
-            .replace(", QUARTER)", ", 'QUARTER')")
-            .replace(", YEAR)", ", 'YEAR')")
-            .replace(", DAY)", ", 'DAY')")
-        )
+        db.execute("INSERT INTO dim_customer VALUES (7,NULL,NULL,DATE '2027-01-01')")
+        sql = customer_lifecycle_sql("p", "d")
         params = dict(
             year=None, quarter=None, channel=None, category=None, subcategory=None
         )
 
         def counts(**changes):
-            return {r[0]: r[1] for r in db.execute(sql, params | changes)}
+            return {r[0]: r[1] for r in db.execute(sql, params | changes).fetchall()}
 
         self.assertEqual(
             counts(),

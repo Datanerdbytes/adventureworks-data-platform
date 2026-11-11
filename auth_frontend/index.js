@@ -307,7 +307,13 @@ async function initialize() {
     document.body.classList.remove("auth-blocked");
     document.getElementById("auth-startup")?.setAttribute("hidden", "");
     startRenderer?.();
-  } else if (mode === "login") status(loginNotice(params));
+  } else if (mode === "login") {
+    status(loginNotice(params));
+    // A returning visitor whose browser still holds a live session never
+    // needs the login page: sync silently and continue to the dashboard.
+    const existing = await controller.sync(destination()).catch(() => null);
+    if (existing) location.replace(existing.next);
+  }
 }
 
 if (document.readyState === "loading")

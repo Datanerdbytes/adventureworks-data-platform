@@ -1,5 +1,3 @@
-import re
-import sqlite3
 import sys
 import unittest
 from datetime import date
@@ -15,45 +13,26 @@ from pages.growth import (
     ledger_card,
 )
 from test_wholesale_kpis import ALL, CATALOG
+from warehouse_fixture import connect
 
 
 class LedgerTests(unittest.TestCase):
     def test_order_grain_split_and_prior_month(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.create_function("SAFE_DIVIDE", 2, lambda a, b: a / b if b else None)
-        db.executescript("""
-        CREATE TABLE fct_sales(order_date_key,product_key,sales_channel,sales_order_number,sales_amount);
-        CREATE TABLE dim_date(date_key,calendar_date,is_weekend_flag);
-        CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-        INSERT INTO dim_date VALUES(1,'2025-12-01',0),(2,'2026-01-01',0),(3,'2026-01-03',1),(4,'2026-03-01',1);
+        db = connect("""
+        CREATE TABLE fct_sales(order_date_key INTEGER,product_key INTEGER,sales_channel VARCHAR,sales_order_number VARCHAR,sales_amount DOUBLE);
+        CREATE TABLE dim_date(date_key INTEGER,calendar_date DATE,is_weekend_flag BOOLEAN);
+        CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+        INSERT INTO dim_date VALUES(1,DATE '2025-12-01',FALSE),(2,DATE '2026-01-01',FALSE),(3,DATE '2026-01-03',TRUE),(4,DATE '2026-03-01',TRUE);
         INSERT INTO dim_product VALUES(1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
         INSERT INTO fct_sales VALUES(1,1,'Reseller','a',100),(2,1,'Reseller','b',20),(2,1,'Reseller','b',30),(3,1,'Internet','b',150),(4,2,'Internet','c',80);
         """)
-        sql = re.sub(r"`p.d.(\w+)`", r"\1", growth_ledger_sql("p", "d"))
-        sql = (
-            sql.replace(
-                "DATE_TRUNC(d.calendar_date, MONTH)",
-                "date(d.calendar_date, 'start of month')",
-            )
-            .replace(
-                "COUNTIF(sales_order_number IS NOT NULL)",
-                "SUM(sales_order_number IS NOT NULL)",
-            )
-            .replace("DATE_SUB(month, INTERVAL 1 MONTH)", "date(month,'-1 month')")
-            .replace(
-                "EXTRACT(YEAR FROM month)", "CAST(strftime('%Y',month) AS INTEGER)"
-            )
-            .replace(
-                "CONCAT('Q', CAST(EXTRACT(QUARTER FROM month) AS STRING))",
-                "'Q' || CAST((CAST(strftime('%m',month) AS INTEGER)+2)/3 AS INTEGER)",
-            )
-        )
+        self.addCleanup(db.close)
+        sql = growth_ledger_sql("p", "d")
         params = dict(
             year=2026, quarter=None, channel=None, category=None, subcategory=None
         )
         rows = db.execute(sql, params).fetchall()
-        self.assertEqual(rows[0], ("2026-01-01", 200, 2, 50, 150, 75, 100))
+        self.assertEqual(rows[0], (date(2026, 1, 1), 200, 2, 50, 150, 75, 100))
         self.assertIsNone(rows[1][-1])
         filtered = db.execute(
             sql,
@@ -65,7 +44,7 @@ class LedgerTests(unittest.TestCase):
                 "subcategory": "Road Bikes",
             },
         ).fetchall()
-        self.assertEqual(filtered, [("2026-01-01", 50, 1, 50, 0, 0, -50)])
+        self.assertEqual(filtered, [(date(2026, 1, 1), 50, 1, 50, 0, 0, -50)])
 
     def test_numeric_rows_sorting_export_and_pagination(self):
         row = dict(

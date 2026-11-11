@@ -47,6 +47,16 @@ and requires a deliberate retry/reload. Rejected writes are never automatically
 replayed. Read-only GETs require no CSRF token. Startup issuance failures keep the
 existing authentication failure/loading behavior and do not release Dash requests.
 
+The same-tab variant of this race was observed on 2026-11-11: when the nonce
+cookie is absent, two protected mutations dispatched together each request their
+own issuance, both mint a different nonce, and the browser keeps only the second
+cookie. The first mutation then submits a token bound to the replaced nonce and
+is rejected with "CSRF token missing or invalid. Reload and retry." A reload, or
+submitting the form again, issues one consistent cookie/token pair and succeeds.
+The protection still fails closed and the rejected write is never replayed.
+Sharing a single issuance between concurrent mutations would remove the race
+without weakening the cookie binding.
+
 Offline backend tests exercise actual Dash governance callback requests and assert
 that rejected mutations do not reach RPCs. Frontend tests cover token acquisition,
 Request and header overrides, destination isolation, cancellation, concurrent

@@ -1,7 +1,5 @@
 """Warehouse chart grains, filter scope, and view switching."""
 
-import re
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -10,30 +8,26 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app as app  # Initializes Dash page/callback registration.
 from pages.wholesale import populate_secondary
+from warehouse_fixture import connect
 from wholesale_kpis import reseller_scatter_sql, wholesale_product_mix_sql
 from test_wholesale_kpis import CATALOG, ALL
 
 
 class WholesaleChartViewTests(unittest.TestCase):
     def test_scatter_grain_and_filters(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales (reseller_key, sales_channel, order_date_key, product_key, order_quantity);
-        CREATE TABLE dim_reseller (reseller_key, reseller_name, annual_revenue);
-        CREATE TABLE dim_date (date_key, calendar_year, calendar_quarter_name);
-        CREATE TABLE dim_product (product_key, category_name, subcategory_name);
+        db = connect("""
+        CREATE TABLE fct_sales (reseller_key INTEGER, sales_channel VARCHAR, order_date_key INTEGER, product_key INTEGER, order_quantity INTEGER);
+        CREATE TABLE dim_reseller (reseller_key INTEGER, reseller_name VARCHAR, annual_revenue DOUBLE);
+        CREATE TABLE dim_date (date_key INTEGER, calendar_year INTEGER, calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product (product_key INTEGER, category_name VARCHAR, subcategory_name VARCHAR);
         INSERT INTO dim_reseller VALUES (1, 'Same name', 100000), (2, 'Same name', 200000), (3, 'Missing revenue', NULL);
         INSERT INTO dim_date VALUES (1, 2026, 'Q1'), (2, 2025, 'Q2');
         INSERT INTO dim_product VALUES (1, 'Bikes', 'Road Bikes'), (2, 'Clothing', 'Jerseys');
         INSERT INTO fct_sales VALUES (1,'Reseller',1,1,10), (1,'Reseller',1,1,15),
           (2,'Reseller',2,2,40), (3,'Reseller',1,1,99), (1,'Internet',1,1,999);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`",
-            r"\1",
-            reseller_scatter_sql("project", "dataset"),
-        )
+        self.addCleanup(db.close)
+        sql = reseller_scatter_sql("project", "dataset")
         params = dict.fromkeys(
             ("year", "quarter", "channel", "category", "subcategory")
         )
@@ -63,21 +57,16 @@ class WholesaleChartViewTests(unittest.TestCase):
         )
 
     def test_product_mix_warehouse_aggregation(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE revenue_sales_performance (calendar_year, calendar_quarter_name, sales_channel, product_category, product_subcategory, gross_revenue_amount);
+        db = connect("""
+        CREATE TABLE revenue_sales_performance (calendar_year INTEGER, calendar_quarter_name VARCHAR, sales_channel VARCHAR, product_category VARCHAR, product_subcategory VARCHAR, gross_revenue_amount DOUBLE);
         INSERT INTO revenue_sales_performance VALUES
         (2026,'Q1','Reseller','Bikes','Road Bikes',100),
         (2026,'Q1','Reseller','Bikes','Mountain Bikes',50),
         (2025,'Q2','Reseller','Clothing','Jerseys',40),
         (2026,'Q1','Internet','Bikes','Road Bikes',9999);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`",
-            r"\1",
-            wholesale_product_mix_sql("project", "dataset"),
-        )
+        self.addCleanup(db.close)
+        sql = wholesale_product_mix_sql("project", "dataset")
         params = dict.fromkeys(
             ("year", "quarter", "channel", "category", "subcategory")
         )

@@ -1,5 +1,3 @@
-import re
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -11,27 +9,27 @@ from growth_kpis import day_type_sales_sql
 from pages.growth import day_type_figure, populate_primary
 from test_wholesale_kpis import ALL, CATALOG
 from test_growth_filters import report
+from warehouse_fixture import connect
 
 
 class DayTypeTests(unittest.TestCase):
     def test_sql_grain_and_filters(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales(order_date_key,product_key,sales_channel,sales_amount);
-        CREATE TABLE dim_date(date_key,calendar_year,calendar_quarter_name,month_number,is_weekend_flag);
-        CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-        INSERT INTO dim_date VALUES(1,2026,'Q1',1,0),(2,2026,'Q1',1,1),(3,2025,'Q2',4,1);
+        db = connect("""
+        CREATE TABLE fct_sales(order_date_key INTEGER,product_key INTEGER,sales_channel VARCHAR,sales_amount DOUBLE);
+        CREATE TABLE dim_date(date_key INTEGER,calendar_year INTEGER,calendar_quarter_name VARCHAR,month_number INTEGER,is_weekend_flag BOOLEAN);
+        CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+        INSERT INTO dim_date VALUES(1,2026,'Q1',1,FALSE),(2,2026,'Q1',1,TRUE),(3,2025,'Q2',4,TRUE);
         INSERT INTO dim_product VALUES(1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
         INSERT INTO fct_sales VALUES(1,1,'Reseller',10),(1,1,'Reseller',20),(2,1,'Internet',40),(3,2,'Reseller',50);
         """)
-        sql = re.sub(r"`p.d.(\w+)`", r"\1", day_type_sales_sql("p", "d"))
+        self.addCleanup(db.close)
+        sql = day_type_sales_sql("p", "d")
         params = dict.fromkeys(
             ("year", "quarter", "channel", "category", "subcategory")
         )
         self.assertEqual(
             db.execute(sql, params).fetchall(),
-            [(2025, 4, 1, 50), (2026, 1, 0, 30), (2026, 1, 1, 40)],
+            [(2025, 4, True, 50), (2026, 1, False, 30), (2026, 1, True, 40)],
         )
         for f in (
             {"year": 2026},
@@ -51,7 +49,7 @@ class DayTypeTests(unittest.TestCase):
                     "subcategory": "Road Bikes",
                 },
             ).fetchall(),
-            [(2026, 1, 0, 30)],
+            [(2026, 1, False, 30)],
         )
 
     def test_grouped_bars_and_switch(self):

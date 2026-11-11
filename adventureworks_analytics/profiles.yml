@@ -1,0 +1,26 @@
+adventureworks_analytics:
+  target: duckdb
+  outputs:
+    # Offline build used by the local pipeline and CI. scripts/load_bronze_duckdb.py
+    # creates the raw_adventureworks schema inside this file before `dbt build`.
+    # The resulting gold tables are exported to the app's shipped DuckDB artifact.
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', 'build/analytics.duckdb') }}"
+      schema: main
+      threads: 4
+
+    # Kept for a reviewable warehouse path: the same models compile against the
+    # original BigQuery raw dataset. The GCP project has no live credentials, so
+    # running this target requires restored access first.
+    bigquery:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('GCP_PROJECT_ID', 'quantum-echo-data-eng-prod') }}"
+      dataset: raw_adventureworks
+      keyfile: "{{ env_var('GCP_KEY_PATH', 'gcp-key.json') }}"
+      location: us-central1
+      threads: 4
+      job_execution_timeout_seconds: 300
+      job_retries: 1
+      priority: interactive

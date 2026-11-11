@@ -1,5 +1,3 @@
-import re
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -8,35 +6,30 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app as app  # Initializes Dash page/callback registration.
 from pages.wholesale import populate_operations, operations_columns
+from warehouse_fixture import connect
 from wholesale_kpis import wholesale_operations_sql
 from test_wholesale_kpis import CATALOG, ALL
 
 
 class OperationsTests(unittest.TestCase):
     def test_invoice_grain_filters_and_missing_shipping(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE stg_fact_reseller_sales(reseller_key, sales_order_number, order_quantity, ship_date, order_date, order_date_key, product_key);
-        CREATE TABLE dim_date(date_key, calendar_year, calendar_quarter_name);
-        CREATE TABLE dim_product(product_key, category_name, subcategory_name);
-        CREATE TABLE dim_reseller(reseller_key,reseller_name,order_frequency,state_province_name,country_region_name);
+        db = connect("""
+        CREATE TABLE stg_fact_reseller_sales(reseller_key INTEGER, sales_order_number VARCHAR, order_quantity INTEGER, ship_date DATE, order_date DATE, order_date_key INTEGER, product_key INTEGER);
+        CREATE TABLE dim_date(date_key INTEGER, calendar_year INTEGER, calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product(product_key INTEGER, category_name VARCHAR, subcategory_name VARCHAR);
+        CREATE TABLE dim_reseller(reseller_key INTEGER,reseller_name VARCHAR,order_frequency VARCHAR,state_province_name VARCHAR,country_region_name VARCHAR);
         INSERT INTO dim_date VALUES(1,2026,'Q1'),(2,2025,'Q2');
         INSERT INTO dim_product VALUES(1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
         INSERT INTO dim_reseller VALUES(1,' Buyer ','A','CA','USA'),(2,'Buyer','Q','BC','Canada');
         INSERT INTO stg_fact_reseller_sales VALUES
-        (1,'a',10,'2026-01-09','2026-01-01',1,1),
-        (1,'a',20,'2026-01-09','2026-01-01',1,1),
-        (1,'b',6,'2026-01-03','2026-01-01',1,1),
-        (1,'c',4,NULL,'2026-01-01',1,1),
-        (2,'d',9,'2025-01-08','2025-01-01',2,2);
+        (1,'a',10,DATE '2026-01-09',DATE '2026-01-01',1,1),
+        (1,'a',20,DATE '2026-01-09',DATE '2026-01-01',1,1),
+        (1,'b',6,DATE '2026-01-03',DATE '2026-01-01',1,1),
+        (1,'c',4,NULL,DATE '2026-01-01',1,1),
+        (2,'d',9,DATE '2025-01-08',DATE '2025-01-01',2,2);
         """)
+        self.addCleanup(db.close)
         sql = wholesale_operations_sql("project", "gold", "silver")
-        sql = re.sub(r"`project.\w+.(\w+)`", r"\1", sql)
-        sql = sql.replace(
-            "DATE_DIFF(s.ship_date, s.order_date, DAY)",
-            "julianday(s.ship_date) - julianday(s.order_date)",
-        ).replace("SUM(i.units) / COUNT(*)", "1.0 * SUM(i.units) / COUNT(*)")
         params = dict.fromkeys(
             ("year", "quarter", "channel", "category", "subcategory")
         )

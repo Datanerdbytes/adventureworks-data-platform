@@ -1,8 +1,5 @@
-import calendar
 from datetime import date
 from pathlib import Path
-import re
-import sqlite3
 import sys
 import unittest
 from unittest.mock import patch
@@ -12,65 +9,28 @@ from app import app as app  # Initializes Dash page/callback registration.
 from customer_kpis import customer_scorecards_sql, validate_warehouse_identifiers
 from pages.customers import populate_scorecards, render_scorecards
 from test_wholesale_kpis import ALL, CATALOG
+from warehouse_fixture import connect
 from dash.exceptions import PreventUpdate
 
 
 class CustomerKpiTests(unittest.TestCase):
     def test_customer_cohort_churn_and_state_invoice_grain(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.create_function("IF", 3, lambda condition, yes, no: yes if condition else no)
-        db.create_function(
-            "DATE_DIFF",
-            3,
-            lambda end, start, unit: (
-                date.fromisoformat(end) - date.fromisoformat(start)
-            ).days,
-        )
-
-        def last_day(value, unit):
-            if value is None:
-                return None
-            d = date.fromisoformat(value)
-            month = 12 if unit == "YEAR" else ((d.month - 1) // 3 + 1) * 3
-            return date(
-                d.year, month, calendar.monthrange(d.year, month)[1]
-            ).isoformat()
-
-        db.create_function("LAST_DAY", 2, last_day)
-        db.executescript("""
-        CREATE TABLE fct_sales(customer_key,sales_channel,sales_order_number,order_date_key,sales_amount,product_key,sales_territory_key);
-        CREATE TABLE dim_date(date_key,calendar_date,calendar_year,calendar_quarter_name);
-        CREATE TABLE dim_customer(customer_key,state_province_name,country_region_name,date_first_purchase);
-        CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-        CREATE TABLE dim_sales_territory(sales_territory_key,territory_group);
-        INSERT INTO dim_date VALUES(0,'2025-12-01',2025,'Q4'),(1,'2026-01-01',2026,'Q1'),(2,'2026-01-03',2026,'Q1'),(3,'2026-06-30',2026,'Q2'),(4,'2026-07-02',2026,'Q3');
+        db = connect("""
+        CREATE TABLE fct_sales(customer_key INTEGER,sales_channel VARCHAR,sales_order_number VARCHAR,order_date_key INTEGER,sales_amount DOUBLE,product_key INTEGER,sales_territory_key INTEGER);
+        CREATE TABLE dim_date(date_key INTEGER,calendar_date DATE,calendar_year INTEGER,calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_customer(customer_key INTEGER,state_province_name VARCHAR,country_region_name VARCHAR,date_first_purchase DATE);
+        CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+        CREATE TABLE dim_sales_territory(sales_territory_key INTEGER,territory_group VARCHAR);
+        INSERT INTO dim_date VALUES(0,DATE '2025-12-01',2025,'Q4'),(1,DATE '2026-01-01',2026,'Q1'),(2,DATE '2026-01-03',2026,'Q1'),(3,DATE '2026-06-30',2026,'Q2'),(4,DATE '2026-07-02',2026,'Q3');
         INSERT INTO dim_customer VALUES(1,'California','US',NULL),(2,'California','US',NULL),(3,'California','US',NULL),(4,'California','US',NULL),(5,'California','US',NULL);
         INSERT INTO dim_product VALUES(1,'Bikes','Road Bikes'),(2,'Clothing','Jerseys');
         INSERT INTO dim_sales_territory VALUES(1,'North America');
         INSERT INTO fct_sales VALUES(4,'Internet','old',0,100,1,1),(1,'Internet','a',1,20,1,1),(1,'Internet','a',1,30,1,1),(2,'Internet','b',1,50,1,1),(3,'Internet','c',2,50,1,1),(1,'Internet','d',3,40,2,1),(5,'Internet','e',4,10,1,1),(5,'Internet','e',4,10,1,1),(5,'Internet','f',4,10,1,1),(NULL,'Reseller','a',4,900,1,1);
         """)
+        self.addCleanup(db.close)
         sql = customer_scorecards_sql("p", "d").split(
             "SELECT (SELECT COUNT(*) FROM selected)"
         )[0]
-        sql = re.sub(r"`p.d.(\w+)`", r"\1", sql)
-        sql = (
-            sql.replace("LEAST(", "MIN(")
-            .replace(
-                "LAST_DAY(latest_selected, QUARTER)",
-                "LAST_DAY(latest_selected, 'QUARTER')",
-            )
-            .replace(
-                "LAST_DAY(latest_selected, YEAR)", "LAST_DAY(latest_selected, 'YEAR')"
-            )
-        )
-        sql = sql.replace(
-            "DATE_TRUNC(order_date, MONTH)", "date(order_date,'start of month')"
-        ).replace("DATE_TRUNC(as_of, MONTH)", "date(as_of,'start of month')")
-        sql = sql.replace(
-            "DATE_SUB(date(as_of,'start of month'), INTERVAL 1 MONTH)",
-            "date(as_of,'start of month','-1 month')",
-        )
         params = dict(
             year=2026, quarter=None, channel=None, category="Bikes", subcategory=None
         )
@@ -86,16 +46,14 @@ class CustomerKpiTests(unittest.TestCase):
             280,
         )
         last = dict(
-            db.execute(sql + "SELECT customer_key,last_order FROM last_orders", params)
+            db.execute(
+                sql + "SELECT customer_key,last_order FROM last_orders", params
+            ).fetchall()
         )
         # A later order outside the product selection prevents false customer churn.
-        self.assertEqual(last[1], "2026-06-30")
-        cutoff = date.fromisoformat(
-            db.execute(sql + "SELECT as_of FROM cutoff", params).fetchone()[0]
-        )
-        self.assertEqual(
-            sum((cutoff - date.fromisoformat(d)).days > 180 for d in last.values()), 2
-        )
+        self.assertEqual(last[1], date(2026, 6, 30))
+        cutoff = db.execute(sql + "SELECT as_of FROM cutoff", params).fetchone()[0]
+        self.assertEqual(sum((cutoff - d).days > 180 for d in last.values()), 2)
         # Duplicate invoice lines do not inflate transaction growth; prior month is outside Q3.
         params.update(quarter="Q3", category=None)
         self.assertEqual(

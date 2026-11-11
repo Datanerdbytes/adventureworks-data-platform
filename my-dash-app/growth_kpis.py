@@ -4,57 +4,86 @@ from warehouse_cache import warehouse_memoize
 
 from decimal import Decimal
 import pandas as pd
-from google.cloud import bigquery
-from google.api_core.exceptions import NotFound
-from revenue_kpis import cache, filter_parameters, validate_warehouse_identifiers
+from revenue_kpis import cache, filter_parameters
+from revenue_kpis import (
+    validate_warehouse_identifiers as validate_warehouse_identifiers,
+)
+from warehouse_client import query_rows
 
 
-def growth_scorecards_sql(project, dataset, product_filtered=False):
-    # The mart has no product dimensions. Rebuild its monthly grain from filtered
-    # facts for product selections rather than silently dropping those filters.
+def growth_daily_sql(project, dataset):
+    """Order-grain daily history used when product filters break the mart grain."""
     validate_warehouse_identifiers(project, dataset)
-    monthly = (
-        "SELECT DATE_TRUNC(order_date, MONTH) AS month, SUM(revenue) AS revenue FROM daily GROUP BY 1"
-        if product_filtered
-        else f"""SELECT DATE(calendar_year, month_number, 1) AS month,
-                         SUM(periodic_gross_revenue) AS revenue
-                  FROM `{project}.{dataset}.marts_growth_trends`
-                  WHERE (@channel IS NULL OR sales_channel = @channel)
-                  GROUP BY 1"""  # nosec B608
-    )
-    return f"""
+    return """
     WITH invoices AS (
       SELECT d.calendar_date AS order_date, s.sales_channel, s.sales_order_number,
              SUM(s.sales_amount) AS revenue
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-      WHERE (@channel IS NULL OR s.sales_channel = @channel)
-        AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-        AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      WHERE ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
       GROUP BY 1, 2, 3
     ), daily AS (
       SELECT order_date, SUM(revenue) AS revenue,
-             COUNTIF(sales_order_number IS NOT NULL) AS orders
+             COUNT(*) FILTER (WHERE sales_order_number IS NOT NULL) AS orders
       FROM invoices GROUP BY 1
     ), rolling AS (
       SELECT order_date,
              SUM(revenue) OVER (
-               ORDER BY UNIX_DATE(order_date) RANGE BETWEEN 29 PRECEDING AND CURRENT ROW
+               ORDER BY order_date RANGE BETWEEN INTERVAL 29 DAY PRECEDING
+               AND CURRENT ROW
              ) AS rolling_revenue
       FROM daily
     ), selected AS (
       SELECT * FROM daily
-      WHERE (@year IS NULL OR EXTRACT(YEAR FROM order_date) = @year)
-        AND (@quarter IS NULL OR CONCAT('Q', CAST(EXTRACT(QUARTER FROM order_date) AS STRING)) = @quarter)
-    ), monthly AS ({monthly})
+      WHERE ($year IS NULL OR EXTRACT(YEAR FROM order_date) = $year)
+        AND ($quarter IS NULL OR CONCAT('Q', CAST(EXTRACT(QUARTER FROM order_date) AS VARCHAR)) = $quarter)
+    )
     SELECT
-      ARRAY(SELECT AS STRUCT month, revenue FROM monthly ORDER BY month LIMIT 1201) AS monthly,
       (SELECT MAX(order_date) FROM selected) AS anchor_date,
       (SELECT MIN(order_date) FROM daily) AS first_date,
       (SELECT rolling_revenue FROM rolling WHERE order_date = (SELECT MAX(order_date) FROM selected)) AS rolling_revenue,
-      (SELECT SAFE_DIVIDE(SUM(orders), COUNT(DISTINCT order_date)) FROM selected) AS order_velocity
+      (SELECT CASE WHEN COUNT(DISTINCT order_date) = 0 THEN NULL
+                   ELSE SUM(orders) / COUNT(DISTINCT order_date) END FROM selected) AS order_velocity
     LIMIT 1
+    """  # nosec B608
+
+
+def growth_mart_monthly_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    SELECT make_date(calendar_year, month_number, 1) AS month,
+           SUM(periodic_gross_revenue) AS revenue
+    FROM gold_adventureworks.marts_growth_trends
+    WHERE ($channel IS NULL OR sales_channel = $channel)
+    GROUP BY 1
+    ORDER BY 1
+    """  # nosec B608
+
+
+def growth_daily_monthly_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    WITH invoices AS (
+      SELECT d.calendar_date AS order_date, s.sales_channel, s.sales_order_number,
+             SUM(s.sales_amount) AS revenue
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      WHERE ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
+      GROUP BY 1, 2, 3
+    ), monthly AS (
+      SELECT CAST(date_trunc('month', order_date) AS DATE) AS month,
+             SUM(revenue) AS revenue
+      FROM invoices GROUP BY 1
+    )
+    SELECT month, revenue FROM monthly
+    ORDER BY month
+    LIMIT 1201
     """  # nosec B608
 
 
@@ -69,33 +98,39 @@ def load_growth_scorecards(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        use_facts = category is not None or subcategory is not None
-        source = "Product-filtered sales facts" if use_facts else "Growth mart"
-        if not use_facts:
-            try:
-                client.get_table(f"{project}.{dataset}.marts_growth_trends")
-            except NotFound:
-                use_facts = True
-                source = "Sales facts (growth mart not deployed)"
-        job = client.query(
-            growth_scorecards_sql(project, dataset, use_facts),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
+    # The mart has no product dimensions. Rebuild its monthly grain from filtered
+    # facts for product selections rather than silently dropping those filters.
+    use_facts = category is not None or subcategory is not None
+    source = "Product-filtered sales facts" if use_facts else "Growth mart"
+    if not use_facts:
         try:
-            row = dict(next(iter(job.result(timeout=20))))
-        except TimeoutError:
-            job.cancel()
-            raise
-    if len(row["monthly"]) > 1200:
+            query_rows("SELECT 1 FROM gold_adventureworks.marts_growth_trends LIMIT 1")
+        except Exception:
+            use_facts = True
+            source = "Sales facts (growth mart not deployed)"
+    # Each query binds only the filters its SQL actually consumes.
+    if use_facts:
+        monthly = query_rows(
+            growth_daily_monthly_sql(project, dataset),
+            {
+                "channel": channel,
+                "category": category,
+                "subcategory": subcategory,
+            },
+        )
+    else:
+        # The mart monthly query binds only the channel filter.
+        monthly = query_rows(
+            growth_mart_monthly_sql(project, dataset), {"channel": channel}
+        )
+    daily = query_rows(
+        growth_daily_sql(project, dataset),
+        filter_parameters(year, quarter, channel, category, subcategory),
+    )
+    row = daily[0]
+    if len(monthly) > 1200:
         raise ValueError("Growth history exceeds supported range")
-    return {**row, "source": source}
+    return {**row, "monthly": monthly, "source": source}
 
 
 def calculate_scorecards(data, year=None, quarter=None):
@@ -168,17 +203,17 @@ def calculate_scorecards(data, year=None, quarter=None):
 
 def day_type_sales_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     SELECT d.calendar_year, d.month_number, d.is_weekend_flag,
            SUM(s.sales_amount) AS revenue
-    FROM `{project}.{dataset}.fct_sales` s
-    JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-    LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-    WHERE (@year IS NULL OR d.calendar_year = @year)
-      AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-      AND (@channel IS NULL OR s.sales_channel = @channel)
-      AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-      AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+    FROM gold_adventureworks.fct_sales s
+    JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+    LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+    WHERE ($year IS NULL OR d.calendar_year = $year)
+      AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+      AND ($channel IS NULL OR s.sales_channel = $channel)
+      AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+      AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
     GROUP BY 1, 2, 3
     ORDER BY 1, 2, 3
     LIMIT 2401
@@ -196,22 +231,8 @@ def load_day_type_sales(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            day_type_sales_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    rows = query_rows(day_type_sales_sql(project, dataset), parameters)
     if len(rows) > 2400:
         raise ValueError("Too many monthly segments")
     return rows
@@ -219,17 +240,17 @@ def load_day_type_sales(
 
 def seasonality_matrix_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     SELECT d.month_number, TRIM(d.day_of_week_name) AS day_name,
            SUM(s.order_quantity) AS units
-    FROM `{project}.{dataset}.fct_sales` s
-    JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-    LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-    WHERE (@year IS NULL OR d.calendar_year = @year)
-      AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-      AND (@channel IS NULL OR s.sales_channel = @channel)
-      AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-      AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+    FROM gold_adventureworks.fct_sales s
+    JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+    LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+    WHERE ($year IS NULL OR d.calendar_year = $year)
+      AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+      AND ($channel IS NULL OR s.sales_channel = $channel)
+      AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+      AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
     GROUP BY 1, 2
     ORDER BY 1, 2
     LIMIT 84
@@ -247,43 +268,29 @@ def load_seasonality_matrix(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            seasonality_matrix_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            return [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    return query_rows(seasonality_matrix_sql(project, dataset), parameters)
 
 
 def growth_ledger_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     WITH invoices AS (
-      SELECT DATE_TRUNC(d.calendar_date, MONTH) AS month,
+      SELECT CAST(date_trunc('month', d.calendar_date) AS DATE) AS month,
              s.sales_channel, s.sales_order_number,
              SUM(s.sales_amount) AS revenue,
              SUM(CASE WHEN d.is_weekend_flag = FALSE THEN s.sales_amount ELSE 0 END) AS weekday_revenue,
              SUM(CASE WHEN d.is_weekend_flag = TRUE THEN s.sales_amount ELSE 0 END) AS weekend_revenue
-      FROM `{project}.{dataset}.fct_sales` s
-      JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-      LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-      WHERE (@channel IS NULL OR s.sales_channel = @channel)
-        AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-        AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      WHERE ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
       GROUP BY 1, 2, 3
     ), monthly AS (
       SELECT month, SUM(revenue) AS revenue,
-             COUNTIF(sales_order_number IS NOT NULL) AS orders,
+             COUNT(*) FILTER (WHERE sales_order_number IS NOT NULL) AS orders,
              SUM(weekday_revenue) AS weekday_revenue,
              SUM(weekend_revenue) AS weekend_revenue
       FROM invoices GROUP BY 1
@@ -293,12 +300,15 @@ def growth_ledger_sql(project, dataset):
       FROM monthly
     )
     SELECT month, revenue, orders, weekday_revenue, weekend_revenue,
-           SAFE_DIVIDE(weekend_revenue, revenue) * 100 AS weekend_share,
-           CASE WHEN previous_month = DATE_SUB(month, INTERVAL 1 MONTH) AND previous_revenue > 0
-                THEN (SAFE_DIVIDE(revenue, previous_revenue) - 1) * 100 END AS mom_growth
+           CASE WHEN revenue = 0 THEN NULL
+                ELSE weekend_revenue / revenue * 100 END AS weekend_share,
+           CASE WHEN previous_month = CAST(month - INTERVAL 1 MONTH AS DATE)
+                     AND previous_revenue > 0
+                THEN (CASE WHEN previous_revenue = 0 THEN NULL
+                           ELSE revenue / previous_revenue END - 1) * 100 END AS mom_growth
     FROM history
-    WHERE (@year IS NULL OR EXTRACT(YEAR FROM month) = @year)
-      AND (@quarter IS NULL OR CONCAT('Q', CAST(EXTRACT(QUARTER FROM month) AS STRING)) = @quarter)
+    WHERE ($year IS NULL OR EXTRACT(YEAR FROM month) = $year)
+      AND ($quarter IS NULL OR CONCAT('Q', CAST(EXTRACT(QUARTER FROM month) AS VARCHAR)) = $quarter)
     ORDER BY month
     LIMIT 1201
     """  # nosec B608
@@ -315,22 +325,8 @@ def load_growth_ledger(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            growth_ledger_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            rows = [dict(row) for row in job.result(timeout=20)]
-        except TimeoutError:
-            job.cancel()
-            raise
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    rows = query_rows(growth_ledger_sql(project, dataset), parameters)
     if len(rows) > 1200:
         raise ValueError("Too many ledger months")
     return rows
