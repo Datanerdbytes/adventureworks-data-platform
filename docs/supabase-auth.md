@@ -1,5 +1,7 @@
 > Authentication cutover prepared 2026-10-19: the current owner/admin account model is documented in [Account management](account-management.md). Workspace approval, switching, and workspace bootstrap instructions below describe the retired model. Hosted rollout is a separate operator step.
 
+> Provider status 2026-11-11: the Google OAuth client in project `quantum-echo-data-eng-prod` was deleted, so Google sign-in fails at Google with `deleted_client`. OAuth providers are therefore disabled at the application layer by leaving `AUTH_OAUTH_PROVIDERS` empty, which matches the `.env.example` baseline; email/password is the only sign-in path until a provider client is recreated. The owner account was a Google-only identity, so a password was set on it through the service-role admin API to keep owner access available. See [recovering a deleted OAuth client](#recovering-a-deleted-oauth-client).
+
 # Supabase Authentication and Workspace Governance
 
 The Dash/Flask server verifies each access token with Supabase Auth and reads
@@ -39,6 +41,51 @@ In Supabase Auth:
   `google,github`. A rendered button is not proof of provider configuration.
 - OAuth requires a verified email. Accounts without a usable confirmed email
   cannot access the workspace; use confirmed email/password instead.
+
+### Recovering a deleted OAuth client
+
+Google answers `deleted_client` with "Access blocked / Authorization Error / The
+OAuth client was deleted" when the OAuth client behind a provider was removed in
+Google Cloud. Supabase still lists the provider as enabled, so the app keeps
+rendering a button that cannot succeed. Find the failing client first:
+
+```sh
+curl -s -o /dev/null -D - \
+  "https://<project-ref>.supabase.co/auth/v1/authorize?provider=google&redirect_to=<origin>/auth/callback"
+```
+
+The `302` location shows the `client_id=<number>-<id>.apps.googleusercontent.com`
+in use. The leading number is the Google Cloud **project number**; map it to a
+project id with the Cloud Resource Manager API (`v1/projects/<project-id>`). On
+2026-11-11 this identified project `quantum-echo-data-eng-prod` as the owner of
+the client that had been deleted.
+
+Then:
+
+1. Create a **Web application** OAuth client in that Google Cloud project
+   (APIs and Services → Credentials).
+2. Add the authorized redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`
+   and the authorized JavaScript origins for every app origin in use
+   (`http://127.0.0.1:8050` locally, the deployed HTTPS origin in production).
+3. Configure the OAuth consent screen (External) with app name, support email,
+   and developer contact. While the app is unverified, add each tester account as
+   a test user.
+4. Update Supabase → Authentication → Providers → Google with the new client ID
+   and client secret, then save. The secret belongs to Supabase only: never
+   place it in this repository, `.env`, browser configuration, or logs.
+5. Re-test the authorize redirect. It must reach Google's account chooser
+   instead of the error page and return to `<origin>/auth/callback`.
+6. Only after a successful round trip, re-add `google` to `AUTH_OAUTH_PROVIDERS`
+   in the local `.env` and in the deployed environment, then restart or redeploy.
+
+While the credential is broken, remove the provider name from
+`AUTH_OAUTH_PROVIDERS`. That hides the unusable button and leaves email/password
+and the remaining working providers available; the server never offers a provider
+that is not listed there.
+
+Keep the OAuth client in a dedicated Google Cloud project that is not used for
+data or warehouse workloads. Provider credentials that share a project with
+deletable infrastructure fail again when that infrastructure is removed.
 
 OAuth and same-browser confirmation/recovery use PKCE. For email links that may
 be opened on another device, configure templates to use Supabase token hashes:

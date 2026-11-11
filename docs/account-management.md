@@ -104,6 +104,23 @@ configure retention of inactive counters separately; no cleanup job is installed
    parallel bootstrap commands from creating two owners. No owner is assigned on
    application startup; existing workspace roles are not migrated implicitly.
 
+   When the email recovery path is unavailable, for example while the project's
+   outbound email quota is exhausted (`429 over_email_send_rate_limit`), set a
+   password with the operator tool instead. It reads the new password twice
+   without echoing it, never takes it as an argument, and preserves the account's
+   governance metadata:
+
+   ```sh
+   uv run --locked python scripts/set_account_password.py --email datanerdbytes@gmail.com
+   uv run --locked python scripts/set_account_password.py --email datanerdbytes@gmail.com --apply
+   ```
+
+   The first command only verifies the account and its `qe_owner`/`qe_role`
+   state. The second prompts for the new password. A social-only account can
+   hold a password this way, but a password set on an account that never used one
+   is an added credential: prefer the email recovery flow when it is available,
+   and rotate any password that has passed through a shared channel.
+
 6. Deploy the new built image with lockout enabled, verify guard readiness and
    account flows, then route traffic. Configure service identity access to the
    runtime secret using your deployment process. A secret update alone does not
