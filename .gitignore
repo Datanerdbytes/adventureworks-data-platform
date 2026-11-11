@@ -3,6 +3,7 @@
 # ==============================================================================
 gcp-key.json
 .env
+.env.vercel
 
 # ==============================================================================
 # 🐍 PYTHON ENVIRONMENT & ENVIRONMENT UTILITIES
@@ -28,12 +29,18 @@ adventureworks_analytics/build/
 dbt_packages/
 dbt_modules/
 
+# Local dbt user profile (machine-specific)
+adventureworks_analytics/.user.yml
+
 # ==============================================================================
 # 💻 OS SPECIFIC ARTIFACTS
 # ==============================================================================
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Local agent session state
+.zcode/
 
 # ==============================================================================
 # 🌐 NODE / FRONTEND
