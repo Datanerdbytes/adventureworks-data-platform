@@ -64,12 +64,27 @@ service-role keys into the image.
 
 ## Deploy and verify
 
-This checkout does not choose a project implicitly. Verify the linked owner/project
-with `vercel project inspect --non-interactive`; use `vercel link` only after
-selecting the intended account and project.
+Deployments run through GitHub Actions (`.github/workflows/deploy-vercel.yml`), so
+no local Vercel CLI sign-in is required. The workflow deploys **previews** on
+pull requests and pushes to `main`; production traffic moves only when the
+workflow is run manually with the target set to `production`.
 
-Deploy a preview with `vercel deploy`, inspect the build with `vercel inspect`, then
-verify before a production release:
+One-time setup:
+
+1. Create a Vercel access token (Account Settings → Tokens, scope it to the
+   `adventureworks-analytics` project's team) and store it as the repository
+   secret `VERCEL_TOKEN` with `gh secret set VERCEL_TOKEN`.
+2. Store the org and project identifiers as `VERCEL_ORG_ID` and
+   `VERCEL_PROJECT_ID`. The current values come from `.vercel/project.json`
+   (`team_aWWXAsZiAMPGuRFGhIqQyyFA`, `prj_nff006qKUhdUdIHrNXKFwjfvE62w`); if the
+   project is re-imported, replace both secrets with the new identifiers.
+3. Configure the project's Environment Variables in the Vercel dashboard per the
+   runtime configuration above.
+4. After the first preview, allow the deployment domain's `/auth/callback` and
+   `/auth/recovery` URLs in the Supabase redirect allowlist, then set
+   `AUTH_APP_ORIGIN` to the exact deployed HTTPS origin.
+
+Preview verification before a production release:
 
 - The public landing, login, and `/auth/config` routes return expected responses.
 - Anonymous Dash layout and callback requests are denied by the Flask guard.
