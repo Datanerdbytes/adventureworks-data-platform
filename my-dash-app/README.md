@@ -1,8 +1,9 @@
 # AdventureWorks Analytics
 
 A Dash/Flask analytics console with Supabase authentication and workspace
-membership governance. Reports use BigQuery; remaining illustrative sections are
-explicitly labeled. No ingestion or dbt jobs run from Workspace Overview.
+membership governance. Reports read the shipped DuckDB analytics artifact;
+remaining illustrative sections are explicitly labeled. No ingestion or dbt jobs
+run from Workspace Overview.
 
 ## Run and authentication
 
@@ -101,7 +102,7 @@ collapsed rail, the Dashboard chevron expands the sidebar to reveal reports.
 Each page has sample-year and region filters, four KPIs, two charts, and a
 paginated detail grid. Filters persist for the browser session. Tables respect
 Settings page size. Reports use an independent deterministic synthetic order
-fixture for 2025–2026; no BigQuery queries run. Amounts are USD and illustrative.
+fixture for 2025–2026; no remote warehouse queries run. Amounts are USD and illustrative.
 Wholesale uses reseller-channel orders; demographics deduplicate Internet-channel
 customers. Growth compares both years but uses the selected year for detail and
 month-over-month metrics, including the prior December baseline when available.
@@ -126,10 +127,11 @@ Unknown-product fallback as the dbt model. AOV divides selected revenue by
 purchasing orders; with product filters it represents selected-product spend per
 order, not the entire basket. Product-level order counts are never summed.
 
-The query uses ADC, `GBQ_PROJECT_ID`, and optional `BQ_ANALYTICS_DATASET` (default
-`gold_adventureworks`). Aggregate queries are read-only, capped at 100 MiB billed,
-and cached for 60 seconds per project, dataset, and full filter tuple. Catalog
-options are cached for five minutes. No data query runs at import or in layouts.
+The query reads the committed `analytics.duckdb` artifact (or `GOLD_DATABASE_PATH`
+when set) from the `gold_adventureworks` schema. Aggregate queries are read-only,
+bounded, and cached for 60 seconds per legacy project/dataset key and full filter
+tuple. Catalog options are cached for five minutes. No data query runs at import or
+in layouts.
 Empty selections show zero revenue/profit/orders and undefined ratios as em
 dashes. Query failures clear the old results and show an error instead of demo
 values. Reload to retry. Tests use mocks for warehouse access.
@@ -149,8 +151,8 @@ used when `AUTH_APP_ORIGIN` is HTTPS; HTTP is intended only for local developmen
 
 ### Wholesale fulfillment matrix
 
-The wholesale table uses `stg_fact_reseller_sales` from `BQ_STAGING_DATASET`
-(default `silver_adventureworks`), joined to the analytics date, product, and
+The wholesale table uses `stg_fact_reseller_sales` from the artifact's
+`silver_adventureworks` schema, joined to the analytics date, product, and
 reseller dimensions. All five warehouse filters apply. Invoice counts are distinct
 per reseller; average units divide filtered units by matching invoices. Shipping
 lead days use calendar-date differences, averaged within invoice and then across
@@ -207,7 +209,7 @@ not applicable to the four customer-based cards.
 The demographic and growth marts discard customer IDs and/or customer-state/date
 grain. These non-additive metrics therefore reuse their source facts and dimensions
 rather than summing demographic segment counts or inventing missing identities.
-Queries are parameterized, cached for 60 seconds, and capped at 100 MiB billed.
+Queries are parameterized, cached for 60 seconds, and bounded.
 
 The retail region and age charts count distinct customers purchasing within the
 selected sales scope, not the cumulative acquired-profile KPI base. Region means

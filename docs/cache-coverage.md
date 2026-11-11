@@ -32,7 +32,7 @@ version change or an operator-managed cache invalidation.
 
 Each argument is varied independently: a warehouse query must occur and its
 response must differ from the cached baseline. Repeating either selection reuses
-its response. Query text or typed BigQuery parameters confirms that each changed
+its response. Query text or bound named parameters confirms that each changed
 input reaches the query. Positional, keyword and omitted optional defaults reuse
 the same entry. Separate functions cannot share entries solely because their
 arguments match.
@@ -69,7 +69,7 @@ it, and the operating system releases it when a process terminates.
 positive. It is read and validated during startup, with Flask server config taking
 precedence over the environment. A waiting request raises `TimeoutError` after
 that deadline; it does not query without coordination or publish fake success.
-The wait deadline does not change BigQuery's existing query/result timeouts.
+The wait deadline does not change the artifact query's own execution time.
 
 There are at most **64 private lock files**, created with mode `0600` in the
 application's private temporary lock directory. Different keys may share a stripe
@@ -87,10 +87,12 @@ failure, eviction or TTL expiry can cause a later worker to query again.
 
 ## Workspace scope
 
-Page callbacks resolve `GBQ_PROJECT_ID` and `BQ_ANALYTICS_DATASET` before calling
-the loaders; wholesale operations also resolves `BQ_STAGING_DATASET`. Each is an
-explicit argument, so configuration changes select distinct entries. No warehouse
-identifier is resolved from hidden environment state after key generation.
+Page callbacks still resolve `GBQ_PROJECT_ID` and `BQ_ANALYTICS_DATASET` into the
+loader arguments; wholesale operations also resolves `BQ_STAGING_DATASET`. The SQL
+now targets the artifact's fixed `gold_adventureworks`/`silver_adventureworks`
+schemas, but these explicit arguments remain part of the cache identity so a
+configuration change selects a distinct entry. No warehouse identifier is resolved
+from hidden environment state after key generation.
 
 All authorized workspaces currently read the same AdventureWorks dataset. These
 loaders return no workspace-specific/user-specific results. Authorization and
