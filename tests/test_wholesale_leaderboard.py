@@ -1,7 +1,5 @@
 """Offline leaderboard ranking and callback coverage."""
 
-import re
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -10,22 +8,22 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app as app  # Initializes Dash page/callback registration.
 from pages.wholesale import populate_leaderboard
+from warehouse_fixture import connect
 from wholesale_kpis import top_resellers_sql
 from test_wholesale_kpis import CATALOG, ALL
 
 
 class LeaderboardTests(unittest.TestCase):
     def test_join_filter_aggregate_and_top_ten(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales (reseller_key, sales_channel, order_date_key, product_key, sales_amount);
-        CREATE TABLE dim_reseller (reseller_key, reseller_name);
-        CREATE TABLE dim_date (date_key, calendar_year, calendar_quarter_name);
-        CREATE TABLE dim_product (product_key, category_name, subcategory_name);
+        db = connect("""
+        CREATE TABLE fct_sales (reseller_key INTEGER, sales_channel VARCHAR, order_date_key INTEGER, product_key INTEGER, sales_amount DOUBLE);
+        CREATE TABLE dim_reseller (reseller_key INTEGER, reseller_name VARCHAR);
+        CREATE TABLE dim_date (date_key INTEGER, calendar_year INTEGER, calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product (product_key INTEGER, category_name VARCHAR, subcategory_name VARCHAR);
         INSERT INTO dim_date VALUES (1, 2026, 'Q1'), (2, 2025, 'Q2');
         INSERT INTO dim_product VALUES (1, 'Bikes', 'Road Bikes'), (2, 'Clothing', 'Jerseys');
         """)
+        self.addCleanup(db.close)
         db.executemany(
             "INSERT INTO dim_reseller VALUES (?, ?)",
             [(i, f"Reseller {i:02}") for i in range(1, 13)],
@@ -34,13 +32,11 @@ class LeaderboardTests(unittest.TestCase):
             "INSERT INTO fct_sales VALUES (?, 'Reseller', 1, 1, ?)",
             [(i, i * 10) for i in range(1, 13)],
         )
-        db.executescript("""
+        db.execute("""
         INSERT INTO fct_sales VALUES (1, 'Reseller', 1, 1, 500), (1, 'Internet', 1, 1, 99999),
           (2, 'Reseller', 2, 2, 800), (99, 'Reseller', 1, 1, 99999);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`", r"\1", top_resellers_sql("project", "dataset")
-        )
+        sql = top_resellers_sql("project", "dataset")
         params = dict.fromkeys(
             ("year", "quarter", "channel", "category", "subcategory")
         )

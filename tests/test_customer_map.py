@@ -70,5 +70,5 @@ class CustomerMapTests(unittest.TestCase):
         self.assertIn("SUM(gross_revenue_amount)", customer_map_sql("p", "d", True))
         sql = customer_map_sql("p", "d")
         for name in ["year", "quarter", "channel", "category", "subcategory"]:
-            self.assertIn("@" + name, sql)
+            self.assertIn("$" + name, sql)
         self.assertIn("'Wholesale/Reseller'", sql)

@@ -5,9 +5,9 @@ from decimal import Decimal
 import math
 from typing import TypedDict
 
-from google.cloud import bigquery
 from revenue_kpis import cache, validate_warehouse_identifiers
 from warehouse_cache import warehouse_memoize
+from warehouse_client import query_rows
 
 MAX_PREVIEW_ROWS = 500
 
@@ -79,11 +79,11 @@ def table_sql(project, dataset, name):
     if not isinstance(name, str) or name not in TABLES:
         raise ValueError("Unknown warehouse preview table")
     spec = TABLES[name]
-    fields = ", ".join(f"`{field}`" for field, _, _ in spec["columns"])
-    order = ", ".join(f"`{field}`" for field in spec["order"])
+    fields = ", ".join(field for field, _, _ in spec["columns"])
+    order = ", ".join(field for field in spec["order"])
     return (
-        f"SELECT {fields} FROM `{project}.{dataset}.{spec['table']}` "
-        f"ORDER BY {order} LIMIT @preview_limit"
+        f"SELECT {fields} FROM gold_adventureworks.{spec['table']} "
+        f"ORDER BY {order} LIMIT $preview_limit"
     )
 
 
@@ -100,25 +100,9 @@ def preview_value(value):
 @warehouse_memoize(cache, timeout=60)
 def load_table_preview(project, dataset, name):
     query = table_sql(project, dataset, name)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            query,
-            job_config=bigquery.QueryJobConfig(
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-                query_parameters=[
-                    bigquery.ScalarQueryParameter(
-                        "preview_limit", "INT64", MAX_PREVIEW_ROWS + 1
-                    )
-                ],
-            ),
-        )
-        try:
-            # A sentinel distinguishes a complete small table from a capped preview.
-            result = list(job.result(timeout=20, max_results=MAX_PREVIEW_ROWS + 1))
-        except TimeoutError:
-            job.cancel()
-            raise
+    # The sentinel row keeps a complete small table distinct from a capped
+    # preview.
+    result = query_rows(query, {"preview_limit": MAX_PREVIEW_ROWS + 1})
     rows = [
         {field: preview_value(row[field]) for field, _, _ in TABLES[name]["columns"]}
         for row in result[:MAX_PREVIEW_ROWS]

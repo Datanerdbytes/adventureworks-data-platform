@@ -5,7 +5,7 @@ import tempfile
 import threading
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
@@ -14,7 +14,7 @@ from revenue_kpis import kpi_cards, kpi_sql
 
 
 class RevenueKpiTests(unittest.TestCase):
-    def test_concurrent_worker_cache_misses_submit_one_query(self):
+    def test_concurrent_worker_cache_misses_submit_one_load(self):
         from flask import Flask
         from revenue_kpis import cache, load_executive_report
 
@@ -31,20 +31,24 @@ class RevenueKpiTests(unittest.TestCase):
             lock_dir.mkdir()
             server.extensions["executive_query_lock_dir"] = lock_dir
 
-            def query(*args, **kwargs):
+            def query_rows_mock(*args, **kwargs):
                 with count.get_lock():
                     count.value += 1
-                job = MagicMock()
-
-                def result(**kwargs):
-                    threading.Event().wait(0.1)
-                    return iter([{"source_rows": 42}])
-
-                job.result.side_effect = result
-                return job
-
-            client = MagicMock()
-            client.__enter__.return_value.query.side_effect = query
+                threading.Event().wait(0.1)
+                # Financials, orders, monthly, then detail — in loader order.
+                return [
+                    [
+                        {
+                            "gross_revenue_amount": 100,
+                            "gross_profit_amount": 10,
+                            "source_rows": 42,
+                            "gross_profit_margin_percentage": 10.0,
+                        }
+                    ],
+                    [{"total_orders_count": 5}],
+                    [],
+                    [],
+                ][(count.value - 1) % 4]
 
             def fetch():
                 try:
@@ -58,7 +62,7 @@ class RevenueKpiTests(unittest.TestCase):
                 except Exception as error:
                     results.put(type(error).__name__)
 
-            with patch("revenue_kpis.bigquery.Client", return_value=client):
+            with patch("revenue_kpis.query_rows", side_effect=query_rows_mock):
                 workers = [context.Process(target=fetch) for _ in range(3)]
                 try:
                     for worker in workers:
@@ -69,7 +73,8 @@ class RevenueKpiTests(unittest.TestCase):
                     self.assertEqual(
                         [results.get(timeout=1) for _ in workers], [42, 42, 42]
                     )
-                    self.assertEqual(count.value, 1)
+                    # One cold load runs the four report SQL reads exactly once.
+                    self.assertEqual(count.value, 4)
                 finally:
                     for worker in workers:
                         if worker.is_alive():
@@ -249,8 +254,9 @@ class RevenueKpiTests(unittest.TestCase):
         query = kpi_sql("test-project", "gold_adventureworks")
         self.assertIn("SELECT DISTINCT s.sales_channel, s.sales_order_number", query)
         self.assertNotIn("SUM(product_purchasing_orders_count)", query)
-        self.assertIn("SAFE_DIVIDE(gross_profit_amount, gross_revenue_amount)", query)
-        self.assertIn("SAFE_DIVIDE(gross_revenue_amount, total_orders_count)", query)
+        self.assertIn("gross_profit_amount / gross_revenue_amount", query)
+        self.assertIn("gross_revenue_amount / total_orders_count", query)
+        self.assertIn("THEN NULL", query)
 
 
 class MonthlyComboChartTests(unittest.TestCase):

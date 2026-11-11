@@ -1,7 +1,5 @@
 """Offline account-grain aggregation and wholesale callback checks."""
 
-import re
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -11,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app as app  # Initializes Dash page/callback registration.
 from pages.wholesale import layout, populate_accounts
 from sales_filters import ALL, valid_values
+from warehouse_fixture import connect
 from wholesale_kpis import active_accounts_sql
 
 CATALOG = [
@@ -40,12 +39,10 @@ class WholesaleKpiTests(unittest.TestCase):
         self.addCleanup(comparison.stop)
 
     def test_distinct_accounts_and_every_filter(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales (reseller_key, sales_order_number, sales_channel, order_date_key, product_key);
-        CREATE TABLE dim_date (date_key, calendar_year, calendar_quarter_name);
-        CREATE TABLE dim_product (product_key, category_name, subcategory_name);
+        db = connect("""
+        CREATE TABLE fct_sales (reseller_key INTEGER, sales_order_number VARCHAR, sales_channel VARCHAR, order_date_key INTEGER, product_key INTEGER);
+        CREATE TABLE dim_date (date_key INTEGER, calendar_year INTEGER, calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product (product_key INTEGER, category_name VARCHAR, subcategory_name VARCHAR);
         INSERT INTO dim_date VALUES (1, 2026, 'Q1'), (2, 2025, 'Q2');
         INSERT INTO dim_product VALUES (1, 'Bikes', 'Road Bikes'), (2, 'Clothing', 'Jerseys');
         INSERT INTO fct_sales VALUES
@@ -54,9 +51,8 @@ class WholesaleKpiTests(unittest.TestCase):
           (30, 'D', 'Reseller', 2, 2), (40, 'E', 'Internet', 1, 1),
           (NULL, 'F', 'Reseller', 1, 1), (50, NULL, 'Reseller', 1, 1);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`", r"\1", active_accounts_sql("project", "dataset")
-        )
+        self.addCleanup(db.close)
+        sql = active_accounts_sql("project", "dataset")
         cases = [
             ({}, 3),
             ({"year": 2026}, 2),
@@ -123,23 +119,17 @@ class WholesaleKpiTests(unittest.TestCase):
     def test_revenue_sum_and_filters(self):
         from wholesale_kpis import reseller_revenue_sql
 
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE revenue_sales_performance (calendar_year, calendar_quarter_name, sales_channel, product_category, product_subcategory, gross_revenue_amount);
+        db = connect("""
+        CREATE TABLE revenue_sales_performance (calendar_year INTEGER, calendar_quarter_name VARCHAR, sales_channel VARCHAR, product_category VARCHAR, product_subcategory VARCHAR, gross_revenue_amount DOUBLE, total_units_sold INTEGER DEFAULT 0);
         INSERT INTO revenue_sales_performance VALUES
-          (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100.25),
-          (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100.25),
-          (2026, 'Q2', 'Reseller', 'Clothing', 'Jerseys', 50.5),
-          (2025, 'Q1', 'Reseller', 'Bikes', 'Mountain Bikes', 200),
-          (2026, 'Q1', 'Internet', 'Bikes', 'Road Bikes', 9000);
-        ALTER TABLE revenue_sales_performance ADD COLUMN total_units_sold DEFAULT 0;
+          (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100.25, 0),
+          (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100.25, 0),
+          (2026, 'Q2', 'Reseller', 'Clothing', 'Jerseys', 50.5, 0),
+          (2025, 'Q1', 'Reseller', 'Bikes', 'Mountain Bikes', 200, 0),
+          (2026, 'Q1', 'Internet', 'Bikes', 'Road Bikes', 9000, 0);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`",
-            r"\1",
-            reseller_revenue_sql("project", "dataset"),
-        )
+        self.addCleanup(db.close)
+        sql = reseller_revenue_sql("project", "dataset")
         for filters, expected in [
             ({}, 451),
             ({"year": 2026}, 251),
@@ -256,10 +246,8 @@ class WholesaleKpiTests(unittest.TestCase):
     def test_wholesale_units_sum_and_filters(self):
         from wholesale_kpis import reseller_revenue_sql
 
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE revenue_sales_performance (calendar_year, calendar_quarter_name, sales_channel, product_category, product_subcategory, gross_revenue_amount, total_units_sold);
+        db = connect("""
+        CREATE TABLE revenue_sales_performance (calendar_year INTEGER, calendar_quarter_name VARCHAR, sales_channel VARCHAR, product_category VARCHAR, product_subcategory VARCHAR, gross_revenue_amount DOUBLE, total_units_sold INTEGER);
         INSERT INTO revenue_sales_performance VALUES
           (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100, 12),
           (2026, 'Q1', 'Reseller', 'Bikes', 'Road Bikes', 100, 12),
@@ -267,11 +255,8 @@ class WholesaleKpiTests(unittest.TestCase):
           (2025, 'Q1', 'Reseller', 'Bikes', 'Mountain Bikes', 200, 5),
           (2026, 'Q1', 'Internet', 'Bikes', 'Road Bikes', 9000, 9999);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`",
-            r"\1",
-            reseller_revenue_sql("project", "dataset"),
-        )
+        self.addCleanup(db.close)
+        sql = reseller_revenue_sql("project", "dataset")
         for filters, expected in [
             ({}, 59),
             ({"year": 2026}, 54),
@@ -337,23 +322,18 @@ class WholesaleKpiTests(unittest.TestCase):
     def test_wholesale_orders_are_distinct_across_product_lines(self):
         from wholesale_kpis import wholesale_orders_sql
 
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales (sales_order_number, sales_channel, order_date_key, product_key);
-        CREATE TABLE dim_date (date_key, calendar_year, calendar_quarter_name);
-        CREATE TABLE dim_product (product_key, category_name, subcategory_name);
+        db = connect("""
+        CREATE TABLE fct_sales (sales_order_number VARCHAR, sales_channel VARCHAR, order_date_key INTEGER, product_key INTEGER);
+        CREATE TABLE dim_date (date_key INTEGER, calendar_year INTEGER, calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product (product_key INTEGER, category_name VARCHAR, subcategory_name VARCHAR);
         INSERT INTO dim_date VALUES (1, 2026, 'Q1'), (2, 2025, 'Q2');
         INSERT INTO dim_product VALUES (1, 'Bikes', 'Road Bikes'), (2, 'Clothing', 'Jerseys');
         INSERT INTO fct_sales VALUES
           ('A', 'Reseller', 1, 1), ('A', 'Reseller', 1, 2), ('B', 'Reseller', 1, 1),
           ('C', 'Reseller', 2, 2), ('A', 'Internet', 1, 1), (NULL, 'Reseller', 1, 1);
         """)
-        sql = re.sub(
-            r"`project.dataset.(\w+)`",
-            r"\1",
-            wholesale_orders_sql("project", "dataset"),
-        )
+        self.addCleanup(db.close)
+        sql = wholesale_orders_sql("project", "dataset")
         for filters, expected in [
             ({}, 3),
             ({"year": 2026}, 2),

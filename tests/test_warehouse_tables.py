@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from flask import Flask
 from dash.exceptions import PreventUpdate
 
@@ -41,41 +41,33 @@ class WarehouseTableTests(unittest.TestCase):
         context.push()
         self.addCleanup(context.pop)
         self.addCleanup(warehouse.cache.clear)
-        item = patch("warehouse_tables.bigquery.Client")
-        self.factory = item.start()
+        item = patch("warehouse_tables.query_rows", return_value=[fixture()])
+        self.warehouse_query = item.start()
         self.addCleanup(item.stop)
-        self.client = self.factory.return_value.__enter__.return_value
-        self.job = self.client.query.return_value
-        self.job.result.return_value = [fixture()]
 
-    def test_explicit_read_only_query_bounded_results_billing_and_stable_order(self):
+    def test_explicit_read_only_query_bounded_results_and_stable_order(self):
         result = warehouse.load_table_preview("test-project", "gold", "Products")
-        sql = self.client.query.call_args.args[0]
-        config = self.client.query.call_args.kwargs["job_config"]
-        self.assertIn("SELECT `product_key`,", sql)
+        sql = self.warehouse_query.call_args.args[0]
+        self.assertIn("SELECT product_key,", sql)
         self.assertNotIn("SELECT *", sql)
-        self.assertIn("ORDER BY `product_key` LIMIT @preview_limit", sql)
-        self.assertEqual(config.maximum_bytes_billed, 100 * 1024 * 1024)
-        self.assertEqual(config.query_parameters[0].value, 501)
-        self.job.result.assert_called_once_with(timeout=20, max_results=501)
+        self.assertIn("ORDER BY product_key LIMIT $preview_limit", sql)
+        self.assertEqual(self.warehouse_query.call_args.args[1], {"preview_limit": 501})
         self.assertFalse(result["capped"])
 
     def test_cache_reuses_selection_and_separates_project_dataset_and_table(self):
-        def query(sql, **kwargs):
-            job = Mock()
+        def query(sql, parameters=None):
             name = (
                 "Sales"
                 if "fct_sales" in sql
                 else "Customers" if "dim_customer" in sql else "Products"
             )
-            job.result.return_value = [fixture(name)]
-            return job
+            return [fixture(name)]
 
-        self.client.query.side_effect = query
+        self.warehouse_query.side_effect = query
         args = ("test-project", "gold", "Products")
         baseline = warehouse.load_table_preview(*args)
         self.assertEqual(warehouse.load_table_preview(*args), baseline)
-        self.assertEqual(self.client.query.call_count, 1)
+        self.assertEqual(self.warehouse_query.call_count, 1)
         for args in [
             ("other-project", "gold", "Products"),
             ("test-project", "other_dataset", "Products"),
@@ -83,7 +75,7 @@ class WarehouseTableTests(unittest.TestCase):
             ("test-project", "gold", "Sales"),
         ]:
             warehouse.load_table_preview(*args)
-        self.assertEqual(self.client.query.call_count, 5)
+        self.assertEqual(self.warehouse_query.call_count, 5)
 
     def test_cap_nulls_dates_and_numbers_remain_truthful(self):
         row = fixture()
@@ -93,7 +85,7 @@ class WarehouseTableTests(unittest.TestCase):
             valid_from_date=date(2013, 1, 1),
             valid_to_date=None,
         )
-        self.job.result.return_value = [row] * 501
+        self.warehouse_query.return_value = [row] * 501
         result = warehouse.load_table_preview("test-project", "gold", "Products")
         self.assertEqual(len(result["rows"]), 500)
         self.assertTrue(result["capped"])
@@ -124,20 +116,19 @@ class WarehouseTableTests(unittest.TestCase):
         ]:
             with self.assertRaises(ValueError):
                 warehouse.load_table_preview(*args)
-        self.factory.assert_not_called()
+        self.warehouse_query.assert_not_called()
 
-    def test_timeout_cancels_job_and_errors_are_not_cached_as_empty_success(self):
-        self.job.result.side_effect = TimeoutError("fixture")
+    def test_timeout_is_not_cached_as_empty_success(self):
+        self.warehouse_query.side_effect = TimeoutError("fixture")
         with self.assertRaises(TimeoutError):
             warehouse.load_table_preview("test-project", "gold", "Products")
-        self.job.cancel.assert_called_once()
-        self.job.result.side_effect = None
-        self.job.result.return_value = []
+        self.warehouse_query.side_effect = None
+        self.warehouse_query.return_value = []
         self.assertEqual(
             warehouse.load_table_preview("test-project", "gold", "Products"),
             {"rows": [], "capped": False},
         )
-        self.assertEqual(self.client.query.call_count, 2)
+        self.assertEqual(self.warehouse_query.call_count, 2)
 
     def test_layout_and_inactive_page_do_not_load_data(self):
         with patch.object(tables, "load_table_preview") as load:

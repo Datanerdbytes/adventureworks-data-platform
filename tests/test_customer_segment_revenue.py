@@ -1,6 +1,4 @@
 import unittest
-import sqlite3
-import re
 from unittest.mock import patch
 from test_customer_kpis import CATALOG, ALL
 from customer_kpis import customer_segment_revenue_sql
@@ -9,23 +7,23 @@ from pages.customers import (
     populate_customer_chart,
     SEGMENT_TITLES,
 )
+from warehouse_fixture import connect
 from dash.exceptions import PreventUpdate
 
 
 class SegmentRevenueTests(unittest.TestCase):
     def test_warehouse_aggregation_and_filters(self):
-        db = sqlite3.connect(":memory:")
-        self.addCleanup(db.close)
-        db.executescript("""
-        CREATE TABLE fct_sales(customer_key,order_date_key,product_key,sales_channel,sales_amount);
-        CREATE TABLE dim_date(date_key,calendar_year,calendar_quarter_name);
-        CREATE TABLE dim_product(product_key,category_name,subcategory_name);
-        CREATE TABLE dim_customer(customer_key,yearly_income,occupation,education_level);
+        db = connect("""
+        CREATE TABLE fct_sales(customer_key INTEGER,order_date_key INTEGER,product_key INTEGER,sales_channel VARCHAR,sales_amount DOUBLE);
+        CREATE TABLE dim_date(date_key INTEGER,calendar_year INTEGER,calendar_quarter_name VARCHAR);
+        CREATE TABLE dim_product(product_key INTEGER,category_name VARCHAR,subcategory_name VARCHAR);
+        CREATE TABLE dim_customer(customer_key INTEGER,yearly_income DOUBLE,occupation VARCHAR,education_level VARCHAR);
         INSERT INTO dim_date VALUES (1,2026,'Q1'),(2,2025,'Q4');
         INSERT INTO dim_product VALUES (1,'Bikes','Road Bikes');
         INSERT INTO dim_customer VALUES (1,29999,'Professional','Graduate Degree'),(2,30000,'Manual','High School'),(3,70000,'Professional','Graduate Degree'),(4,100000,' ','');
         INSERT INTO fct_sales VALUES (1,1,1,'Internet',10),(1,1,1,'Internet',15),(2,1,1,'Internet',20),(3,1,1,'Internet',30),(4,1,1,'Internet',40),(5,1,1,'Internet',50),(NULL,1,1,'Reseller',999),(1,2,1,'Internet',100);
         """)
+        self.addCleanup(db.close)
         params = dict(
             year=2026,
             quarter="Q1",
@@ -35,10 +33,8 @@ class SegmentRevenueTests(unittest.TestCase):
         )
 
         def query(dim, **changes):
-            sql = re.sub(
-                r"`p.d.(\w+)`", r"\1", customer_segment_revenue_sql("p", "d", dim)
-            )
-            return dict(db.execute(sql, params | changes))
+            sql = customer_segment_revenue_sql("p", "d", dim)
+            return dict(db.execute(sql, params | changes).fetchall())
 
         self.assertEqual(
             query("income"),

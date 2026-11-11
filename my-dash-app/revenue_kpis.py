@@ -10,9 +10,9 @@ import tempfile
 
 import dash_bootstrap_components as dbc
 from flask_caching import Cache
-from google.cloud import bigquery
 from components import metric
 from warehouse_cache import positive_threshold, positive_lock_timeout, warehouse_memoize
+from warehouse_client import query_rows
 
 cache = Cache()
 KPI_FIELDS = (
@@ -79,28 +79,33 @@ def warehouse_location():
 def kpi_sql(project, dataset):
     # Product-level order counts overlap. Distinct channel/order pairs preserve
     # basket-level order identity without conflating the two sales channels.
+    #
+    # The mart/fact tables live in the shipped artifact's gold schema; whether
+    # the configured dataset matches is still validated for filter consistency.
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     WITH financials AS (
       SELECT SUM(gross_revenue_amount) AS gross_revenue_amount,
              SUM(gross_profit_amount) AS gross_profit_amount,
              COUNT(*) AS source_rows,
              MIN(calendar_year) AS first_year, MAX(calendar_year) AS last_year
-      FROM `{project}.{dataset}.revenue_sales_performance`
+      FROM gold_adventureworks.revenue_sales_performance
     ), orders AS (
       SELECT COUNT(*) AS total_orders_count FROM (
         SELECT DISTINCT s.sales_channel, s.sales_order_number
-        FROM `{project}.{dataset}.fct_sales` AS s
-        INNER JOIN `{project}.{dataset}.dim_date` AS d
+        FROM gold_adventureworks.fct_sales AS s
+        INNER JOIN gold_adventureworks.dim_date AS d
           ON s.order_date_key = d.date_key
         WHERE s.sales_order_number IS NOT NULL
       )
     )
     SELECT gross_revenue_amount, gross_profit_amount,
-           ROUND(SAFE_DIVIDE(gross_profit_amount, gross_revenue_amount) * 100, 2)
+           ROUND(CASE WHEN gross_revenue_amount = 0 THEN NULL
+                      ELSE gross_profit_amount / gross_revenue_amount END * 100, 2)
              AS gross_profit_margin_percentage,
            total_orders_count,
-           ROUND(SAFE_DIVIDE(gross_revenue_amount, total_orders_count), 2)
+           ROUND(CASE WHEN total_orders_count = 0 THEN NULL
+                      ELSE gross_revenue_amount / total_orders_count END, 2)
              AS average_order_value_aov,
            source_rows, first_year, last_year
     FROM financials CROSS JOIN orders
@@ -111,22 +116,10 @@ def kpi_sql(project, dataset):
 @warehouse_memoize(cache, timeout=60)
 def load_revenue_kpis(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            kpi_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            row = next(iter(job.result(timeout=20)), None)
-        except TimeoutError:
-            job.cancel()
-            raise
+    row = next(iter(query_rows(kpi_sql(project, dataset))), None)
     if row is None or not row["source_rows"]:
         return None
-    return {**dict(row), "fetched_at": datetime.now(timezone.utc).strftime("%H:%M UTC")}
+    return {**row, "fetched_at": datetime.now(timezone.utc).strftime("%H:%M UTC")}
 
 
 def yoy_badge(key, kind, values):
@@ -233,83 +226,102 @@ def kpi_cards(values=None, note="All-time warehouse total"):
 @warehouse_memoize(cache, timeout=300)
 def load_filter_catalog(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    sql = f"""SELECT DISTINCT calendar_year, calendar_quarter_name, sales_channel,
+    sql = """SELECT DISTINCT calendar_year, calendar_quarter_name, sales_channel,
         product_category, product_subcategory
-        FROM `{project}.{dataset}.revenue_sales_performance`
+        FROM gold_adventureworks.revenue_sales_performance
         ORDER BY calendar_year, calendar_quarter_name, sales_channel, product_category, product_subcategory
-        LIMIT 10000"""  # nosec B608
-    with bigquery.Client(project=project) as client:
-        rows = [
-            dict(row)
-            for row in client.query(
-                sql,
-                job_config=bigquery.QueryJobConfig(
-                    maximum_bytes_billed=100 * 1024 * 1024
-                ),
-            ).result(timeout=20)
-        ]
-    return rows
+        LIMIT 10000"""
+    return query_rows(sql)
 
 
-def executive_sql(project, dataset):
+def executive_financials_sql(project, dataset):
     validate_warehouse_identifiers(project, dataset)
-    return f"""
+    return """
     WITH filtered AS (
       SELECT calendar_year, calendar_quarter_name, month_name, sales_channel,
              product_category, product_subcategory, gross_revenue_amount,
              gross_profit_amount, total_units_sold
-      FROM `{project}.{dataset}.revenue_sales_performance`
-      WHERE (@year IS NULL OR calendar_year = @year)
-        AND (@quarter IS NULL OR calendar_quarter_name = @quarter)
-        AND (@channel IS NULL OR sales_channel = @channel)
-        AND (@category IS NULL OR product_category = @category)
-        AND (@subcategory IS NULL OR product_subcategory = @subcategory)
-    ), financials AS (
-      SELECT COALESCE(SUM(gross_revenue_amount), 0) AS gross_revenue_amount,
-             COALESCE(SUM(gross_profit_amount), 0) AS gross_profit_amount,
-             COUNT(*) AS source_rows FROM filtered
-    ), orders AS (
-      SELECT COUNT(*) AS total_orders_count FROM (
-        SELECT DISTINCT s.sales_channel, s.sales_order_number
-        FROM `{project}.{dataset}.fct_sales` s
-        JOIN `{project}.{dataset}.dim_date` d ON s.order_date_key = d.date_key
-        LEFT JOIN `{project}.{dataset}.dim_product` p ON s.product_key = p.product_key
-        WHERE s.sales_order_number IS NOT NULL
-          AND (@year IS NULL OR d.calendar_year = @year)
-          AND (@quarter IS NULL OR d.calendar_quarter_name = @quarter)
-          AND (@channel IS NULL OR s.sales_channel = @channel)
-          AND (@category IS NULL OR COALESCE(p.category_name, 'Unknown') = @category)
-          AND (@subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = @subcategory)
-      )
+      FROM gold_adventureworks.revenue_sales_performance
+      WHERE ($year IS NULL OR calendar_year = $year)
+        AND ($quarter IS NULL OR calendar_quarter_name = $quarter)
+        AND ($channel IS NULL OR sales_channel = $channel)
+        AND ($category IS NULL OR product_category = $category)
+        AND ($subcategory IS NULL OR product_subcategory = $subcategory)
     )
-    SELECT financials.*, orders.total_orders_count,
-      ROUND(SAFE_DIVIDE(gross_profit_amount, gross_revenue_amount)*100, 2) AS gross_profit_margin_percentage,
-      ROUND(SAFE_DIVIDE(gross_revenue_amount, total_orders_count), 2) AS average_order_value_aov,
-      ARRAY(SELECT AS STRUCT calendar_year, month_name, sales_channel,
-          SUM(gross_revenue_amount) AS revenue, SUM(gross_profit_amount) AS profit
-          FROM filtered GROUP BY calendar_year, month_name, sales_channel) AS monthly,
-      ARRAY(SELECT AS STRUCT product_category, product_subcategory,
-          SUM(gross_revenue_amount) AS revenue, SUM(gross_profit_amount) AS profit,
-          SUM(total_units_sold) AS units
-          FROM filtered GROUP BY product_category, product_subcategory
-          ORDER BY revenue DESC) AS detail
-    FROM financials CROSS JOIN orders LIMIT 1
-    """  # nosec B608
+    SELECT COALESCE(SUM(gross_revenue_amount), 0) AS gross_revenue_amount,
+           COALESCE(SUM(gross_profit_amount), 0) AS gross_profit_amount,
+           COUNT(*) AS source_rows,
+           CASE WHEN SUM(gross_revenue_amount) = 0 THEN NULL
+                ELSE SUM(gross_profit_amount) / SUM(gross_revenue_amount) END
+             * 100 AS gross_profit_margin_percentage
+    FROM filtered
+    """
+
+
+def executive_monthly_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    SELECT calendar_year, month_name, sales_channel,
+           SUM(gross_revenue_amount) AS revenue,
+           SUM(gross_profit_amount) AS profit
+    FROM gold_adventureworks.revenue_sales_performance
+    WHERE ($year IS NULL OR calendar_year = $year)
+      AND ($quarter IS NULL OR calendar_quarter_name = $quarter)
+      AND ($channel IS NULL OR sales_channel = $channel)
+      AND ($category IS NULL OR product_category = $category)
+      AND ($subcategory IS NULL OR product_subcategory = $subcategory)
+    GROUP BY calendar_year, month_name, sales_channel
+    ORDER BY calendar_year, month_name, sales_channel
+    """
+
+
+def executive_detail_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    SELECT product_category, product_subcategory,
+           SUM(gross_revenue_amount) AS revenue,
+           SUM(gross_profit_amount) AS profit,
+           SUM(total_units_sold) AS units
+    FROM gold_adventureworks.revenue_sales_performance
+    WHERE ($year IS NULL OR calendar_year = $year)
+      AND ($quarter IS NULL OR calendar_quarter_name = $quarter)
+      AND ($channel IS NULL OR sales_channel = $channel)
+      AND ($category IS NULL OR product_category = $category)
+      AND ($subcategory IS NULL OR product_subcategory = $subcategory)
+    GROUP BY product_category, product_subcategory
+    ORDER BY revenue DESC, product_category, product_subcategory
+    """
+
+
+def executive_orders_sql(project, dataset):
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    SELECT COUNT(*) AS total_orders_count FROM (
+      SELECT DISTINCT s.sales_channel, s.sales_order_number
+      FROM gold_adventureworks.fct_sales s
+      JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+      LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+      WHERE s.sales_order_number IS NOT NULL
+        AND ($year IS NULL OR d.calendar_year = $year)
+        AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+        AND ($channel IS NULL OR s.sales_channel = $channel)
+        AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+        AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
+    )
+    """
 
 
 def filter_parameters(
     year=None, quarter=None, channel=None, category=None, subcategory=None
 ):
-    return [
-        bigquery.ScalarQueryParameter(name, kind, value)
-        for name, kind, value in (
-            ("year", "INT64", year),
-            ("quarter", "STRING", quarter),
-            ("channel", "STRING", channel),
-            ("category", "STRING", category),
-            ("subcategory", "STRING", subcategory),
-        )
-    ]
+    """Named-parameter binding shared by every loader's five sales filters."""
+    return {
+        "year": year,
+        "quarter": quarter,
+        "channel": channel,
+        "category": category,
+        "subcategory": subcategory,
+    }
 
 
 def load_executive_report(
@@ -337,20 +349,26 @@ def _load_executive_report(
     subcategory=None,
 ):
     validate_warehouse_identifiers(project, dataset)
-    with bigquery.Client(project=project) as client:
-        job = client.query(
-            executive_sql(project, dataset),
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=filter_parameters(
-                    year, quarter, channel, category, subcategory
-                ),
-                maximum_bytes_billed=100 * 1024 * 1024,
-                use_query_cache=True,
-            ),
-        )
-        try:
-            row = next(iter(job.result(timeout=20)))
-        except TimeoutError:
-            job.cancel()
-            raise
-    return {**dict(row), "fetched_at": datetime.now(timezone.utc).strftime("%H:%M UTC")}
+    parameters = filter_parameters(year, quarter, channel, category, subcategory)
+    financial = query_rows(executive_financials_sql(project, dataset), parameters)
+    if not financial:
+        raise RuntimeError("Executive financials query returned no rows")
+    financials = financial[0]
+    orders = query_rows(executive_orders_sql(project, dataset), parameters)
+    total_orders = orders[0]["total_orders_count"] if orders else 0
+    monthly = query_rows(executive_monthly_sql(project, dataset), parameters)
+    detail = query_rows(executive_detail_sql(project, dataset), parameters)
+    margin = financials["gross_profit_margin_percentage"]
+    revenue = Decimal(str(financials["gross_revenue_amount"] or 0))
+    report = {
+        **financials,
+        "total_orders_count": total_orders,
+        "gross_profit_margin_percentage": None if margin is None else round(margin, 2),
+        "average_order_value_aov": (
+            None if not total_orders else round(revenue / Decimal(str(total_orders)), 2)
+        ),
+        "monthly": monthly,
+        "detail": detail,
+        "fetched_at": datetime.now(timezone.utc).strftime("%H:%M UTC"),
+    }
+    return report
