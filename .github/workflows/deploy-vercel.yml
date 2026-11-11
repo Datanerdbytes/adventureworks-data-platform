@@ -43,7 +43,7 @@ jobs:
           node-version: "22"
 
       - name: Install pinned Vercel CLI
-        run: npm install --global vercel@64.2.0
+        run: npm install --global vercel@65.14.0
 
       - name: Verify deployment secrets are configured
         run: |
@@ -67,14 +67,14 @@ jobs:
           fi
           # vercel deploy waits for the build by default (--no-wait opts out).
           vercel deploy $flag --yes --token "$VERCEL_TOKEN" 2>&1 | tee deploy.log
-          url=$(grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' deploy.log | tail -n 1 || true)
+          url=$(grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' deploy.log | tail -n 1)
+          if [[ -z "$url" ]]; then
+            echo "::error::No deployment URL found in vercel output; the deploy may have failed."
+            exit 1
+          fi
           {
             echo "### Vercel $label deployment"
-            if [[ -n "$url" ]]; then
-              echo "Deployment URL: $url"
-            else
-              echo "Deployment finished; open the run log for the URL."
-            fi
+            echo "Deployment URL: $url"
             echo ""
             echo "Production traffic is only updated by a manual run of this"
             echo "workflow with target \`production\`."

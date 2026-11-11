@@ -1,6 +1,5 @@
-"""Hook safety: isolate Redis configuration and fail closed on failed checks."""
+"""Hook safety: fail closed on failed checks and never touch external services."""
 
-import os
 from pathlib import Path
 import sys
 import unittest
@@ -11,28 +10,14 @@ from scripts import pre_commit_checks
 
 
 class PreCommitChecksTests(unittest.TestCase):
-    def test_python_tests_override_storage_without_mutating_parent_environment(self):
+    def test_python_tests_run_offline_unittest_suite(self):
         with (
-            patch.dict(
-                os.environ,
-                RATE_LIMIT_ENVIRONMENT="production",
-                RATE_LIMIT_REDIS_URL="redis://fixture-only",
-                RATE_LIMIT_TRUST_PROXY="1",
-            ),
             patch.object(sys, "argv", ["pre_commit_checks.py", "python-tests"]),
             patch.object(pre_commit_checks, "run", return_value=0) as run,
         ):
             self.assertEqual(pre_commit_checks.main(), 0)
-            command, environment = run.call_args.args
+            command = run.call_args.args[0]
             self.assertEqual(command[-4:], ["discover", "-s", "tests", "-v"])
-            self.assertEqual(environment["AUTH_PASSWORD_LOCKOUT_ENABLED"], "false")
-            self.assertEqual(environment["SUPABASE_SERVICE_ROLE_KEY"], "")
-            self.assertEqual(environment["RATE_LIMIT_ENVIRONMENT"], "testing")
-            self.assertEqual(environment["RATE_LIMIT_REDIS_URL"], "")
-            self.assertEqual(environment["RATE_LIMIT_TRUST_PROXY"], "")
-            self.assertEqual(environment["RATE_LIMIT_TRUSTED_PROXY_CIDRS"], "")
-            self.assertEqual(os.environ["RATE_LIMIT_ENVIRONMENT"], "production")
-            self.assertEqual(os.environ["RATE_LIMIT_REDIS_URL"], "redis://fixture-only")
 
     def test_audit_stops_if_locked_export_fails(self):
         with (

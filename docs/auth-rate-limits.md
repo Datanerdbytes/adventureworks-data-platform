@@ -1,3 +1,5 @@
+> **Historical (2026-11-12):** authentication was removed from this application; this guide describes the retired system and is kept only as a record. See [vercel-deployment.md](vercel-deployment.md) for the current runtime.
+
 > Authentication cutover prepared 2026-10-19: the current owner/admin account model is documented in [Account management](account-management.md). Workspace approval, switching, and workspace bootstrap instructions below describe the retired model. Hosted rollout is a separate operator step.
 
 # Authentication rate limits

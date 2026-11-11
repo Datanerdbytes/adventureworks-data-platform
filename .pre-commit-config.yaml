@@ -21,7 +21,7 @@ repos:
         entry: npm run format:check --
         language: system
         types_or: [css, javascript, json, yaml, markdown]
-        exclude: '^(my-dash-app/assets/auth\.js|my-dash-app/map_data/customer_boundaries\.json|my-dash-app/assets/geo/world_110m\.json|package-lock\.json)$'
+        exclude: '^(my-dash-app/map_data/customer_boundaries\.json|my-dash-app/assets/geo/world_110m\.json|package-lock\.json)$'
       - id: mypy
         name: mypy type checking
         entry: uv run --locked mypy
@@ -90,28 +90,22 @@ repos:
         # Existing geographic assets, the generated bundle, the committed
         # Postgres snapshot the portable rebuild starts from, and the shipped
         # runtime DuckDB artifact are intentional.
-        exclude: '^(my-dash-app/(map_data/customer_boundaries\.json|assets/geo/world_110m\.json|assets/auth\.js|data/analytics\.duckdb)|data/raw/adventureworks_dw/.*\.parquet)$'
+        exclude: '^(my-dash-app/(map_data/customer_boundaries\.json|assets/geo/world_110m\.json|data/analytics\.duckdb)|data/raw/adventureworks_dw/.*\.parquet)$'
       - id: trailing-whitespace
         name: Trailing whitespace
         entry: uv run --locked trailing-whitespace-fixer --markdown-linebreak-ext=md
         language: system
         types: [text]
-        exclude: '^my-dash-app/(assets/auth\.js|map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
+        exclude: '^my-dash-app/(map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
       - id: end-of-file-fixer
         name: Final newline
         entry: uv run --locked end-of-file-fixer
         language: system
         types: [text]
-        exclude: '^my-dash-app/(assets/auth\.js|map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
+        exclude: '^my-dash-app/(map_data/customer_boundaries\.json|assets/geo/world_110m\.json)$'
       - id: python-tests
         name: Offline Python tests
         entry: uv run --locked python scripts/pre_commit_checks.py python-tests
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: auth-tests
-        name: Auth frontend tests
-        entry: uv run --locked python scripts/pre_commit_checks.py auth-tests
         language: system
         pass_filenames: false
         always_run: true

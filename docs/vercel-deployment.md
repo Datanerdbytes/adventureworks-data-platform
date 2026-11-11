@@ -1,9 +1,13 @@
 # Vercel deployment
 
-The dashboard runs as one Vercel container service. `vercel.json` selects the
-repository `Dockerfile`, routes every request to the `dashboard` service, and sets
-`PORT=8050`. The Docker build produces the authentication bundle, installs locked
-production Python dependencies, and runs Gunicorn as non-root `appuser`.
+The dashboard runs as one Vercel container service. `vercel.json` forces the
+`container` framework preset, selects the repository `Dockerfile`, and routes every
+request to the `dashboard` service. The single-stage build installs locked
+production Python dependencies and runs Gunicorn as non-root `appuser`.
+
+The application is public: no authentication, no Supabase configuration, and no
+Redis are required to deploy or serve it. Historical authentication documentation
+under `docs/` describes the retired system, not the current runtime.
 
 ## Warehouse data
 
@@ -37,30 +41,18 @@ to the bundled file; leave it unset for the standard image.
 
 ## Runtime configuration
 
-Configure these server-side values on the intended Vercel project:
-
-- The Supabase public URL/key and the server-only service-role key.
-- A stable `FLASK_SECRET_KEY` and the exact HTTPS `AUTH_APP_ORIGIN` of the deployed
-  application. Allow its callback and recovery URLs in Supabase.
-- `RATE_LIMIT_ENVIRONMENT=production` and a reachable Redis connection in
-  `RATE_LIMIT_REDIS_URL`. Never substitute process-local development limiting.
-- `AUTH_OAUTH_PROVIDERS` only for providers that are enabled in Supabase **and**
-  whose client credentials still complete a round trip. A provider whose OAuth
-  client was deleted fails at the provider, not in this app; remove it from the
-  list and see [provider recovery](supabase-auth.md#recovering-a-deleted-oauth-client).
-  As of 2026-11-11 this value is empty in the local environment because the Google
-  client was deleted; set the deployed value the same way until the client is
-  recreated.
-- Keep password lockout disabled until its coordinated migration/hook rollout is
-  complete; see [account management](account-management.md).
+The container needs no project environment variables. `PORT` is baked into the
+image (default `8050`); Vercel's container runtime routes traffic to the port the
+`PORT` environment variable selects, so leave the default unless the platform
+injects a different value.
 
 Google Cloud project, dataset, and service-account variables are not part of the
 runtime contract. The legacy ingestion and BigQuery tooling in `elt_pipeline.py`
 remains an explicit operator path; the container does not read those settings.
 
 `.vercelignore` excludes local secrets, environments, tests, and unrelated pipeline
-artifacts from uploads. `.vercel/` and `.env` stay out of Git. Never bake secrets or
-service-role keys into the image.
+artifacts from uploads. `.vercel/` and `.env` stay out of Git. Never bake secrets
+into the image.
 
 ## Deploy and verify
 
@@ -78,29 +70,26 @@ One-time setup:
    `VERCEL_PROJECT_ID`. The current values come from `.vercel/project.json`
    (`team_aWWXAsZiAMPGuRFGhIqQyyFA`, `prj_nff006qKUhdUdIHrNXKFwjfvE62w`); if the
    project is re-imported, replace both secrets with the new identifiers.
-3. Configure the project's Environment Variables in the Vercel dashboard per the
-   runtime configuration above.
-4. After the first preview, allow the deployment domain's `/auth/callback` and
-   `/auth/recovery` URLs in the Supabase redirect allowlist, then set
-   `AUTH_APP_ORIGIN` to the exact deployed HTTPS origin.
 
 Preview verification before a production release:
 
-- The public landing, login, and `/auth/config` routes return expected responses.
-- Anonymous Dash layout and callback requests are denied by the Flask guard.
-- CSRF issuance and a verified sign-in work with the deployed origin.
+- `/` redirects to `/dashboard` and the dashboard shell renders without a
+  sign-in wall.
 - Revenue, wholesale, growth, customer, and table preview pages render from the
   shipped artifact and keep the five sales filters working.
 
 Container functions scale independently, so each instance has its own temporary
-FilesystemCache for report results. Redis remains the shared authentication rate
-limiter. Deployment does not run ingestion, dbt, or SQL migrations, and it does not
-change Supabase provider or redirect settings.
+FilesystemCache for report results. Deployment does not run ingestion, dbt, or SQL
+migrations.
 
 ## Deployment history
 
 A production deployment on 2026-10-20 used the previous BigQuery-backed runtime and
 runtime-materialized Google credentials. That shape is not current: the startup
-helper now validates the DuckDB artifact and no Google secret is configured. This
-branch adds the artifact runtime configuration but does not itself deploy it. Run
-the preview checks above before treating the hosted application as migrated.
+helper now validates the DuckDB artifact and no Google secret is configured.
+
+On 2026-11-12 the runtime became fully public (authentication removed) and the
+deploy configuration was hardened: `vercel.json` forces the container framework
+preset, the CLI pin was bumped for the container/services beta, and the workflow
+fails when no deployment URL is produced. Promote to production with a manual
+workflow run (`target=production`) after the preview checks above pass.
