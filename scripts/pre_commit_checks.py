@@ -1,7 +1,6 @@
 """Offline test/syntax hooks and advisory checks; never run ELT or dbt."""
 
 import argparse
-import os
 from pathlib import Path
 import shutil
 import subprocess  # nosec B404
@@ -11,14 +10,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(
-    command: list[str], env: dict[str, str] | None = None, quiet: bool = False
-) -> int:
+def run(command: list[str], quiet: bool = False) -> int:
     try:
         return subprocess.run(
             command,
             cwd=ROOT,
-            env=env,
             check=False,
             stdout=subprocess.DEVNULL if quiet else None,
         ).returncode  # nosec B603
@@ -31,28 +27,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "check",
-        choices=("python-tests", "auth-tests", "javascript-syntax", "dependency-audit"),
+        choices=("python-tests", "javascript-syntax", "dependency-audit"),
     )
     parser.add_argument("filenames", nargs="*")
     args = parser.parse_args()
     if args.check == "python-tests":
-        env = dict(os.environ)
-        # Override .env so application import cannot contact production Redis.
-        # The existing tests mock all Supabase, BigQuery and PostgreSQL calls.
-        env.update(
-            AUTH_PASSWORD_LOCKOUT_ENABLED="false",  # pragma: allowlist secret (synthetic test data or non-secret feature flag)
-            SUPABASE_SERVICE_ROLE_KEY="",
-            RATE_LIMIT_ENVIRONMENT="testing",
-            RATE_LIMIT_REDIS_URL="",
-            RATE_LIMIT_TRUST_PROXY="",
-            RATE_LIMIT_TRUSTED_PROXY_CIDRS="",
-        )
+        # The offline suite mocks all external services and reads no warehouse.
         return run(
             [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"],
-            env,
         )
-    if args.check == "auth-tests":
-        return run(["npm", "run", "test:auth"])
     if args.check == "javascript-syntax":
         for filename in args.filenames:
             result = run(["node", "--check", "--", filename])

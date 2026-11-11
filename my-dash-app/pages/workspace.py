@@ -4,8 +4,6 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, callback, dcc, html
 from dash.exceptions import PreventUpdate
-from flask import g
-from user_admin import is_admin
 from components import card, heading, icon
 
 dash.register_page(
@@ -377,22 +375,11 @@ def search_definitions(search):
 def populate_workspace_summary(path):
     if path != "/workspace":
         raise PreventUpdate
-    user = getattr(g, "auth_user", None)
-    if not user:
-        raise PreventUpdate
-    metadata = user.get("app_metadata") or {}
-    role = (
-        "Owner"
-        if metadata.get("qe_owner") is True
-        else "Admin" if is_admin(user) else "Member"
-    )
     return [
         html.Div([html.Dt(label), html.Dd(value)])
         for label, value in (
             ("Workspace", "AdventureWorks Analytics"),
             ("Purpose", "Shared AdventureWorks reporting"),
-            ("Access Policy", "Verified email; administrator-managed suspension"),
-            ("Signed In As", user["email"]),
-            ("Your Role", role),
+            ("Access Policy", "Open access — no sign-in required"),
         )
     ]

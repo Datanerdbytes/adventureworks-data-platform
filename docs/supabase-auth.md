@@ -1,3 +1,5 @@
+> **Historical (2026-11-12):** authentication was removed from this application; this guide describes the retired system and is kept only as a record. See [vercel-deployment.md](vercel-deployment.md) for the current runtime.
+
 > Authentication cutover prepared 2026-10-19: the current owner/admin account model is documented in [Account management](account-management.md). Workspace approval, switching, and workspace bootstrap instructions below describe the retired model. Hosted rollout is a separate operator step.
 
 > Provider status 2026-11-11: the Google OAuth client in project `quantum-echo-data-eng-prod` was deleted, so Google sign-in fails at Google with `deleted_client`. OAuth providers are therefore disabled at the application layer by leaving `AUTH_OAUTH_PROVIDERS` empty, which matches the `.env.example` baseline; email/password is the only sign-in path until a provider client is recreated. The owner account was a Google-only identity, so a password was set on it through the service-role admin API to keep owner access available. See [recovering a deleted OAuth client](#recovering-a-deleted-oauth-client).

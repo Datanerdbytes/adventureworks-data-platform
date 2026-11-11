@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 import warehouse_tables as warehouse
-from app import app
+from app import app  # noqa: F401 — instantiates Dash before pages register
 from pages import tables
 
 
@@ -133,12 +133,6 @@ class WarehouseTableTests(unittest.TestCase):
     def test_layout_and_inactive_page_do_not_load_data(self):
         with patch.object(tables, "load_table_preview") as load:
             self.assertIsNotNone(tables.layout())
-            self.assertEqual(
-                app.server.test_client()
-                .post("/_dash-update-component", json={})
-                .status_code,
-                401,
-            )
             with self.assertRaises(PreventUpdate):
                 tables.populate("Products", None, None, "/dashboard")
             self.assertEqual(tables.populate("untrusted", None, None)[0], [])

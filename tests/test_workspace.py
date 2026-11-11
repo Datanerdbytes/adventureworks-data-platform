@@ -4,11 +4,11 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from flask import g
 from dash.exceptions import PreventUpdate
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
-from app import app, serve_layout
+from app import app  # noqa: F401 — instantiates Dash before pages register
+from app import serve_layout
 from pages.workspace import (
     layout,
     filter_saved_views,
@@ -27,26 +27,15 @@ def walk(node):
 
 
 class WorkspaceTests(unittest.TestCase):
-    def test_summary_uses_configuration_and_verified_identity(self):
-
-        with app.server.test_request_context():
-            with self.assertRaises(PreventUpdate):
-                populate_workspace_summary("/workspace")
-            g.auth_user = {
-                "email": "verified@example.test",
-                "email_confirmed_at": "2026-10-19",
-                "app_metadata": {"qe_role": "admin", "qe_owner": True},
-            }
-            fields = populate_workspace_summary("/workspace")
-            values = {
-                field.children[0].children: field.children[1].children
-                for field in fields
-            }
-            self.assertEqual(values["Workspace"], "AdventureWorks Analytics")
-            self.assertEqual(values["Signed In As"], "verified@example.test")
-            self.assertEqual(values["Your Role"], "Owner")
-            with self.assertRaises(PreventUpdate):
-                populate_workspace_summary("/dashboard")
+    def test_summary_is_static_and_scoped_to_workspace(self):
+        fields = populate_workspace_summary("/workspace")
+        values = {
+            field.children[0].children: field.children[1].children for field in fields
+        }
+        self.assertEqual(values["Workspace"], "AdventureWorks Analytics")
+        self.assertEqual(values["Access Policy"], "Open access — no sign-in required")
+        with self.assertRaises(PreventUpdate):
+            populate_workspace_summary("/dashboard")
 
     def test_mock_layout_and_navigation(self):
         with patch(
@@ -84,3 +73,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("Customer Churn Rate", str(found[0]))
         self.assertIn("No matching", str(search_definitions("nonexistent")))
+
+
+if __name__ == "__main__":
+    unittest.main()

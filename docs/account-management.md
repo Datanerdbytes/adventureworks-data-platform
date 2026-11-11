@@ -1,3 +1,5 @@
+> **Historical (2026-11-12):** authentication was removed from this application; this guide describes the retired system and is kept only as a record. See [vercel-deployment.md](vercel-deployment.md) for the current runtime.
+
 # Account authentication cutover
 
 Local implementation prepared on 2026-10-19 using the

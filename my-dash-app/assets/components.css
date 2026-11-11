@@ -390,7 +390,6 @@ dd {
   --ag-input-border-color: var(--control-border, #71839b);
   --ag-input-focus-border-color: var(--primary);
 }
-:root.theme-dark #account-menu,
 :root.theme-dark .chart-type-options,
 :root.theme-dark .admin-edit-modal .modal-content {
   background: var(--surface-overlay, #22304a);

@@ -17,17 +17,7 @@
     toggle?.setAttribute("title", label);
     window.dispatchEvent(new Event("resize"));
   }
-  function account(open, restore = false) {
-    const menu = document.querySelector("#account-menu");
-    const toggle = document.querySelector("#account-toggle");
-    if (!menu || !toggle) return;
-    menu.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-    if (open) menu.querySelector("a, button")?.focus();
-    else if (restore) toggle.focus();
-  }
   function drawer(open, restore = true) {
-    account(false);
     document.body.classList.toggle("drawer-open", open);
     document
       .querySelector("#mobile-menu")
@@ -76,12 +66,6 @@
         submenu(true);
       } else submenu(document.querySelector("#dashboard-submenu")?.hidden);
     }
-    if (e.target.closest("#account-toggle")) {
-      account(document.querySelector("#account-menu")?.hidden);
-    } else if (!e.target.closest("#account-menu")) {
-      account(false);
-    }
-    if (e.target.closest("#account-menu a")) account(false, true);
     if (e.target.closest("#sidebar-toggle, #settings-collapse")) {
       apply(!collapsed);
       window.dash_clientside.set_props("sidebar-preference", {
@@ -92,18 +76,7 @@
     if (e.target.closest("#mobile-close, #sidebar-backdrop")) drawer(false);
     if (e.target.closest("#app-sidebar a") && mobile()) drawer(false);
   });
-  document.addEventListener("focusin", (e) => {
-    if (!e.target.closest(".account-area")) account(false);
-  });
   document.addEventListener("keydown", (e) => {
-    if (
-      e.key === "Escape" &&
-      document.querySelector("#account-menu")?.hidden === false
-    ) {
-      e.preventDefault();
-      account(false, true);
-      return;
-    }
     if (!document.body.classList.contains("drawer-open")) return;
     if (e.key === "Escape") {
       e.preventDefault();

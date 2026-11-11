@@ -75,14 +75,10 @@ class ThemeTests(unittest.TestCase):
             app.index_string.index(theme_script()),
             app.index_string.index('<link rel="stylesheet"'),
         )
-        for page in ("auth", "landing"):
-            source = (
-                Path(__file__).resolve().parents[1]
-                / "my-dash-app"
-                / "templates"
-                / f"{page}.html"
-            ).read_text()
-            self.assertLess(
-                source.index('{% include "theme-script.html" %}'),
-                source.index('<link rel="stylesheet"'),
-            )
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "my-dash-app"
+            / "templates"
+            / "theme-script.html"
+        ).read_text()
+        self.assertIn("document", source)
