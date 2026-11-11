@@ -58,13 +58,15 @@ jobs:
 
       - name: Deploy
         run: |
+          set -o pipefail
           flag=""
           label="preview"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.target }}" == "production" ]]; then
             flag="--prod"
             label="production"
           fi
-          vercel deploy $flag --yes --token "$VERCEL_TOKEN" --wait 2>&1 | tee deploy.log
+          # vercel deploy waits for the build by default (--no-wait opts out).
+          vercel deploy $flag --yes --token "$VERCEL_TOKEN" 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' deploy.log | tail -n 1 || true)
           {
             echo "### Vercel $label deployment"
