@@ -8,14 +8,28 @@ export function sessionController(client, request, onSignedOut) {
       .then(async () => {
         const { data, error } = await client.auth.getSession();
         if (error) throw error;
-        if (!data.session || stopped) {
+        let session = data.session;
+        // A stored token can outlive its own expiry after time spent closed.
+        // Refresh before syncing so the server sees a valid token instead of
+        // rejecting the startup request and blocking the page.
+        if (
+          session &&
+          typeof session.expires_at === "number" &&
+          session.expires_at * 1000 <= Date.now() + 30_000
+        ) {
+          const { data: refreshed, error: refreshError } =
+            await client.auth.refreshSession();
+          if (refreshError) throw refreshError;
+          session = refreshed.session;
+        }
+        if (!session || stopped) {
           await request("/auth/session", { method: "DELETE" });
           return null;
         }
         return request("/auth/session", {
           method: "POST",
           body: JSON.stringify({
-            access_token: data.session.access_token,
+            access_token: session.access_token,
             next,
           }),
         });

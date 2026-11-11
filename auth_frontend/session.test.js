@@ -13,6 +13,9 @@ test("synchronization is serialized and sends only access tokens", async () => {
           session: { access_token: "access", refresh_token: "never-send" },
         },
       }),
+      refreshSession: async () => {
+        throw new Error("refresh must not run for a fresh session");
+      },
     },
   };
   const controller = sessionController(
@@ -32,6 +35,71 @@ test("synchronization is serialized and sends only access tokens", async () => {
   assert.equal(calls.length, 2);
   assert(!JSON.stringify(calls).includes("never-send"));
 });
+test("a near-expiry token is refreshed before synchronization", async () => {
+  const calls = [];
+  let refreshed = false;
+  const client = {
+    auth: {
+      getSession: async () => ({
+        data: {
+          session: {
+            access_token: "stale",
+            expires_at: Math.floor((Date.now() + 10_000) / 1000),
+          },
+        },
+      }),
+      refreshSession: async () => {
+        refreshed = true;
+        return {
+          data: { session: { access_token: "fresh" } },
+          error: null,
+        };
+      },
+    },
+  };
+  const controller = sessionController(
+    client,
+    async (url, options) => {
+      calls.push(JSON.parse(options.body).access_token);
+      return { approved: true };
+    },
+    () => {},
+  );
+  await controller.sync();
+  assert(refreshed);
+  assert.deepEqual(calls, ["fresh"]);
+});
+
+test("a failed refresh stops synchronization instead of sending a stale token", async () => {
+  let posted = false;
+  const client = {
+    auth: {
+      getSession: async () => ({
+        data: {
+          session: {
+            access_token: "stale",
+            expires_at: Math.floor((Date.now() - 10_000) / 1000),
+          },
+        },
+      }),
+      refreshSession: async () => ({
+        data: { session: null },
+        error: new Error("refresh rejected"),
+      }),
+    },
+  };
+  const controller = sessionController(
+    client,
+    async () => {
+      posted = true;
+      return { approved: true };
+    },
+    () => {},
+  );
+  await assert.rejects(controller.sync());
+  assert(!posted);
+});
+
 test("sign-out clears app cookie and signs out even after synchronization fails", async () => {
   const calls = [];
   let exited = false;

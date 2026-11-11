@@ -35,6 +35,9 @@ from user_admin import account_suspended, install_admin_routes, is_admin
 COOKIE = "aw_access"
 CSRF_COOKIE = "aw_csrf"
 CSRF_MAX_AGE = 86400
+# The cookie carries the access token, so it never outlives the token's own
+# claims; the cap only bounds a longer hosted token TTL.
+COOKIE_MAX_AGE_CAP = 86400
 
 
 def csrf_signer():
@@ -202,7 +205,7 @@ def token_lifetime(token):
         raise GovernanceError("Your session is invalid or expired.", 401) from None
     if remaining <= 0:
         raise GovernanceError("Your session is invalid or expired.", 401)
-    return min(remaining, 3600)
+    return min(remaining, COOKIE_MAX_AGE_CAP)
 
 
 def install_auth(server):
