@@ -87,7 +87,7 @@ def growth_daily_monthly_sql(project, dataset):
     """  # nosec B608
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_growth_scorecards(
     project,
     dataset,
@@ -220,7 +220,7 @@ def day_type_sales_sql(project, dataset):
     """  # nosec B608
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_day_type_sales(
     project,
     dataset,
@@ -257,7 +257,7 @@ def seasonality_matrix_sql(project, dataset):
     """  # nosec B608
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_seasonality_matrix(
     project,
     dataset,
@@ -314,7 +314,7 @@ def growth_ledger_sql(project, dataset):
     """  # nosec B608
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_growth_ledger(
     project,
     dataset,

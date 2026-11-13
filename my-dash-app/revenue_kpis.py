@@ -121,7 +121,7 @@ def kpi_sql(project, dataset):
     """  # nosec B608
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_revenue_kpis(project, dataset):
     validate_warehouse_identifiers(project, dataset)
     row = next(iter(query_rows(kpi_sql(project, dataset))), None)
@@ -385,7 +385,7 @@ def kpi_cards(
     return cards
 
 
-@warehouse_memoize(cache, timeout=300)
+@warehouse_memoize(cache)
 def load_filter_catalog(project, dataset):
     validate_warehouse_identifiers(project, dataset)
     sql = """SELECT DISTINCT calendar_year, calendar_quarter_name, sales_channel,
@@ -526,7 +526,7 @@ def load_executive_report(
     return _load_executive_report(*filters)
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def _load_executive_report(
     project,
     dataset,

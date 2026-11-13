@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dash import Dash, Input, Output, clientside_callback, dcc, html, page_container
 from dotenv import load_dotenv
-from flask import Flask, Response, redirect
+from flask import Flask, Response, redirect, request
 from components import icon
 from analytics import REPORTS
 from revenue_kpis import init_kpi_cache
@@ -14,6 +14,18 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 server = Flask(__name__)
 init_kpi_cache(server)
+
+# Every uncached request wakes the container on Vercel, so let the edge CDN
+# serve Dash's static bundles and icons for the life of the deployment.
+STATIC_CACHE_HEADER = "public, max-age=86400, s-maxage=86400"
+
+
+@server.after_request
+def cache_static_responses(response):
+    path = request.path
+    if path.startswith("/assets/") or path.startswith("/_dash-component-suite"):
+        response.headers["Cache-Control"] = STATIC_CACHE_HEADER
+    return response
 
 
 @server.get("/")
@@ -33,7 +45,9 @@ app = Dash(
 
 @server.get("/theme.css")
 def theme_css():
-    return Response(css_tokens(), mimetype="text/css")
+    response = Response(css_tokens(), mimetype="text/css")
+    response.headers["Cache-Control"] = "public, max-age=300, s-maxage=86400"
+    return response
 
 
 app.index_string = app.index_string.replace(

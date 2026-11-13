@@ -13,6 +13,9 @@ import time
 from flask import current_app
 
 LOCK_STRIPES = 64
+# The DuckDB artifact is committed and immutable at runtime, so cached
+# warehouse reads stay valid far longer than the previous 60s default.
+DEFAULT_TIMEOUT_SECONDS = int(os.environ.get("KPI_CACHE_TIMEOUT_SECONDS", "3600"))
 
 
 def positive_threshold(value):
@@ -66,7 +69,7 @@ def query_lock(key):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def warehouse_memoize(cache, *, timeout=60, coalesce=True):
+def warehouse_memoize(cache, *, timeout=DEFAULT_TIMEOUT_SECONDS, coalesce=True):
     """Share one stable key for lookup and locking, without version-key races.
 
     Tuple envelopes distinguish cached None in one lookup. Only direct warehouse

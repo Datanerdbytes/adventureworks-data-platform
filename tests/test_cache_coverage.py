@@ -15,6 +15,7 @@ import customer_kpis
 import growth_kpis
 import revenue_kpis
 import wholesale_kpis
+import warehouse_cache
 
 MODULES = (revenue_kpis, customer_kpis, growth_kpis, wholesale_kpis)
 LOADERS = (
@@ -248,12 +249,10 @@ class CacheCapacityTests(unittest.TestCase):
         for loader, args, result in first:
             self.assertEqual(loader(**args), result)
         self.assertEqual(self.query_count, count)
-        self.assertEqual(revenue_kpis.load_filter_catalog.cache_timeout, 300)
         self.assertTrue(
             all(
-                loader.cache_timeout == 60
+                loader.cache_timeout == warehouse_cache.DEFAULT_TIMEOUT_SECONDS
                 for loader in LOADERS
-                if loader is not revenue_kpis.load_filter_catalog
             )
         )
 

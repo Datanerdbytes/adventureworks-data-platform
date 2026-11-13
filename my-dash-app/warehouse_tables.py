@@ -97,7 +97,7 @@ def preview_value(value):
     return value
 
 
-@warehouse_memoize(cache, timeout=60)
+@warehouse_memoize(cache)
 def load_table_preview(project, dataset, name):
     query = table_sql(project, dataset, name)
     # The sentinel row keeps a complete small table distinct from a capped

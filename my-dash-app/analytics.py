@@ -1,5 +1,6 @@
 """Shared layouts and deterministic, offline business analytics fixtures."""
 
+from functools import lru_cache
 import logging
 
 import pandas as pd
@@ -45,6 +46,7 @@ REGIONS = (
 COLORS = [TOKENS["primary"], TOKENS["teal"], "#8862AB", "#BD7529"]
 
 
+@lru_cache(maxsize=1)
 def sales_fixture():
     """One synthetic order per active account/month; identifiers stay consistent."""
     rows = []
@@ -202,7 +204,7 @@ def build_report(kind, year, region, preferences=None):
     """Aggregate first; only summaries reach graphs and the grid."""
     if year not in (2025, 2026) or region not in ("All regions", *REGIONS):
         return empty_report("No sample data matches these filters.", preferences)
-    all_sales = sales_fixture()
+    all_sales = sales_fixture().copy()
     if region != "All regions":
         all_sales = all_sales[all_sales["Region"] == region]
     selected = all_sales[all_sales["Year"] == year]
