@@ -589,7 +589,12 @@ def report_cards(values):
     """KPI cards; sparklines only when the selection has monthly rows."""
     if not monthly_points(values["monthly"]):
         return kpi_cards(values, "No matching sales · USD")
-    return kpi_cards(values, note=None, monthly=values["monthly"])
+    return kpi_cards(
+        values,
+        note=None,
+        monthly=values["monthly"],
+        monthly_orders=values.get("monthly_orders"),
+    )
 
 
 def detail_rows(values):

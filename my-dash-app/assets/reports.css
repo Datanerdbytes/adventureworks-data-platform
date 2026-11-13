@@ -315,11 +315,13 @@ body.sidebar-collapsed .submenu-toggle {
   flex-wrap: wrap;
 }
 
-/* Sparkline sits inside the KPI card under the headline value. */
+/* Full width keeps the flex-start card from collapsing the wrapper to 0px,
+   which makes Plotly fall back to its 700px default and bleed across cards. */
 .metric-sparkline {
   height: 44px;
   margin-top: 8px;
   min-width: 0;
+  width: 100%;
 }
 .metric-sparkline .js-plotly-plot {
   height: 44px;

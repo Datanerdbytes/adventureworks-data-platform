@@ -15,7 +15,7 @@ from pages.executive import (
     populate_report,
     normalize_filters,
 )
-from revenue_kpis import kpi_cards, kpi_sql
+from revenue_kpis import KPI_FIELDS, kpi_cards, kpi_sql
 
 
 class RevenueKpiTests(unittest.TestCase):
@@ -40,7 +40,8 @@ class RevenueKpiTests(unittest.TestCase):
                 with count.get_lock():
                     count.value += 1
                 threading.Event().wait(0.1)
-                # Financials, orders, monthly, then detail — in loader order.
+                # Financials, orders, monthly, monthly orders, then detail —
+                # in loader order.
                 return [
                     [
                         {
@@ -53,7 +54,8 @@ class RevenueKpiTests(unittest.TestCase):
                     [{"total_orders_count": 5}],
                     [],
                     [],
-                ][(count.value - 1) % 4]
+                    [],
+                ][(count.value - 1) % 5]
 
             def fetch():
                 try:
@@ -78,8 +80,8 @@ class RevenueKpiTests(unittest.TestCase):
                     self.assertEqual(
                         [results.get(timeout=1) for _ in workers], [42, 42, 42]
                     )
-                    # One cold load runs the four report SQL reads exactly once.
-                    self.assertEqual(count.value, 4)
+                    # One cold load runs the five report SQL reads exactly once.
+                    self.assertEqual(count.value, 5)
                 finally:
                     for worker in workers:
                         if worker.is_alive():
@@ -144,7 +146,6 @@ class RevenueKpiTests(unittest.TestCase):
 
     def test_each_kpi_has_its_own_loading_target(self):
         from dash import dcc
-        from revenue_kpis import KPI_FIELDS
         from pages.executive import update_report
 
         def walk(component):
@@ -470,16 +471,76 @@ MONTHLY_FIXTURE = [
 ]
 
 
+MONTHLY_ORDERS_FIXTURE = [
+    {
+        "calendar_year": 2024,
+        "month_number": 1,
+        "sales_channel": "Internet",
+        "orders": 30,
+    },
+    {
+        "calendar_year": 2024,
+        "month_number": 1,
+        "sales_channel": "Reseller",
+        "orders": 60,
+    },
+    {
+        "calendar_year": 2024,
+        "month_number": 3,
+        "sales_channel": "Internet",
+        "orders": 25,
+    },
+]
+
+
 class KpiSparklineTests(unittest.TestCase):
-    def test_series_kpis_get_sparklines_and_scalars_do_not(self):
+    def test_all_five_kpis_get_sparklines_with_both_series(self):
         from dash import dcc
 
         values = {
             "gross_revenue_amount": 1200,
             "gross_profit_amount": 120,
             "gross_profit_margin_percentage": 10.0,
-            "total_orders_count": 5,
-            "average_order_value_aov": 240.0,
+            "total_orders_count": 115,
+            "average_order_value_aov": 10.43,
+        }
+        cards = kpi_cards(
+            values,
+            note=None,
+            monthly=MONTHLY_FIXTURE,
+            monthly_orders=MONTHLY_ORDERS_FIXTURE,
+        )
+        by_key = {card.id: card for card in cards}
+        for key, _, _ in KPI_FIELDS:
+            spark = by_key[f"executive-kpi-{key}"].children[-2]
+            self.assertIsInstance(spark, dcc.Graph)
+        # Orders sum the per-channel buckets; February has no order rows.
+        orders = by_key["executive-kpi-total_orders_count"].children[-2].figure
+        self.assertEqual(len(orders.data[0].x), 2)
+        self.assertEqual([value for value in orders.data[0].y], [90.0, 25.0])
+        # AOV follows the revenue months; zero-revenue February leaves a gap.
+        aov = by_key["executive-kpi-average_order_value_aov"].children[-2].figure
+        self.assertEqual(len(aov.data[0].x), 3)
+        self.assertAlmostEqual(aov.data[0].y[0], 1000 / 90)
+        self.assertIsNone(aov.data[0].y[1])
+        self.assertAlmostEqual(aov.data[0].y[2], 8.0)
+        self.assertFalse(aov.data[0].connectgaps)
+        # The YoY badge stays the last child on every card.
+        from dash import html
+
+        import dash_bootstrap_components as dbc
+
+        for card in cards:
+            self.assertNotIsInstance(card.children[-1], dcc.Graph)
+            self.assertIsInstance(card.children[-1], (html.Div, dbc.Badge))
+
+    def test_order_kpis_stay_plain_without_order_series(self):
+        from dash import dcc
+
+        values = {
+            "gross_revenue_amount": 1200,
+            "total_orders_count": 115,
+            "average_order_value_aov": 10.43,
         }
         cards = kpi_cards(values, note=None, monthly=MONTHLY_FIXTURE)
         by_key = {card.id: card for card in cards}
@@ -490,20 +551,11 @@ class KpiSparklineTests(unittest.TestCase):
         ):
             spark = by_key[f"executive-kpi-{key}"].children[-2]
             self.assertIsInstance(spark, dcc.Graph)
-            self.assertEqual(len(spark.figure.data[0].x), 3)
         for key in ("total_orders_count", "average_order_value_aov"):
             card_children = by_key[f"executive-kpi-{key}"].children
             self.assertFalse(
                 any(isinstance(child, dcc.Graph) for child in card_children)
             )
-        # The YoY badge stays the last child on every card.
-        from dash import html
-
-        import dash_bootstrap_components as dbc
-
-        for card in cards:
-            self.assertNotIsInstance(card.children[-1], dcc.Graph)
-            self.assertIsInstance(card.children[-1], (html.Div, dbc.Badge))
 
     def test_margin_sparkline_gaps_zero_revenue_months(self):
         figure = (

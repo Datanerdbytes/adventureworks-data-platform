@@ -28,6 +28,8 @@ KPI_FIELDS = (
 REVENUE_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross revenue: $%{y:,.2f}<extra></extra>"
 MARGIN_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross profit margin: %{y:.2f}%<extra></extra>"
 PROFIT_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross profit: $%{y:,.2f}<extra></extra>"
+ORDERS_HOVERTEMPLATE = "%{x|%b %Y}<br>Orders: %{y:,.0f}<extra></extra>"
+AOV_HOVERTEMPLATE = "%{x|%b %Y}<br>Avg order value: $%{y:,.2f}<extra></extra>"
 
 
 def init_kpi_cache(server):
@@ -248,17 +250,48 @@ def monthly_points(monthly) -> list[MonthlyPoint]:
     ]
 
 
+class MonthlyOrderPoint(NamedTuple):
+    """One calendar month's distinct order count, aligned with MonthlyPoint."""
+
+    year: int
+    month: int
+    orders: int
+
+
+def monthly_order_points(monthly_orders) -> list[MonthlyOrderPoint]:
+    """Aggregate monthly order rows into sorted calendar-month sums.
+
+    Buckets are disjoint because an order has a single order date, so summing
+    per-month distinct channel/order counts reproduces the all-time total.
+    Rows with unknown years or months are ignored rather than guessed.
+    """
+    totals: dict[tuple[int, int], int] = {}
+    for row in monthly_orders or []:
+        year = row.get("calendar_year")
+        month = row.get("month_number")
+        if year is None or month is None:
+            continue
+        bucket = (int(year), int(month))
+        totals[bucket] = totals.get(bucket, 0) + int(row.get("orders") or 0)
+    return [
+        MonthlyOrderPoint(year, month, totals[(year, month)])
+        for year, month in sorted(totals)
+    ]
+
+
 def margin_percentage(revenue, profit):
     """Margin from sums; zero revenue leaves a gap instead of a fake zero."""
     return profit / revenue * 100 if revenue != 0 else None
 
 
-def kpi_sparkline(key, monthly):
+def kpi_sparkline(key, monthly, monthly_orders=None):
     """Tiny trend line for one KPI from the already-loaded monthly rows.
 
-    Only the three KPIs with a real monthly series get a sparkline; orders and
-    AOV have no per-month mart rows, so no trend is invented for them. Zero
-    revenue periods leave margin gaps instead of fake zeros.
+    Revenue, profit, and margin trend the monthly revenue mart sums. Orders
+    and AOV trend the distinct channel/order pairs from fct_sales — the same
+    order identity the headline totals use, so no overlapping product-level
+    count is invented. Zero revenue or order periods leave gaps instead of
+    fake zeros.
     """
     points = monthly_points(monthly)
     if len(points) < 2:
@@ -279,12 +312,39 @@ def kpi_sparkline(key, monthly):
         ys = [float(point.profit) for point in points]
         color = TOKENS["primary"]
         hovertemplate = PROFIT_HOVERTEMPLATE
+    elif key == "total_orders_count":
+        order_points = monthly_order_points(monthly_orders)
+        if len(order_points) < 2:
+            return None
+        return sparkline(
+            [datetime(point.year, point.month, 1) for point in order_points],
+            [float(point.orders) for point in order_points],
+            TOKENS["primary"],
+            ORDERS_HOVERTEMPLATE,
+        )
+    elif key == "average_order_value_aov":
+        order_points = monthly_order_points(monthly_orders)
+        if len(order_points) < 2:
+            return None
+        orders = {point[:2]: point.orders for point in order_points}
+        ys = [
+            (
+                float(point.revenue) / orders[(point.year, point.month)]
+                if orders.get((point.year, point.month))
+                else None
+            )
+            for point in points
+        ]
+        color = TOKENS["primary"]
+        hovertemplate = AOV_HOVERTEMPLATE
     else:
         return None
     return sparkline(x, ys, color, hovertemplate)
 
 
-def kpi_cards(values=None, note="All-time warehouse total", monthly=None):
+def kpi_cards(
+    values=None, note="All-time warehouse total", monthly=None, monthly_orders=None
+):
     cards = []
     for key, label, kind in KPI_FIELDS:
         value = (values or {}).get(key)
@@ -314,7 +374,7 @@ def kpi_cards(values=None, note="All-time warehouse total", monthly=None):
             label,
             display,
             note,
-            sparkline=kpi_sparkline(key, monthly) if values else None,
+            sparkline=kpi_sparkline(key, monthly, monthly_orders) if values else None,
         )
         if not note:
             card.children.pop(2)
@@ -413,6 +473,32 @@ def executive_orders_sql(project, dataset):
     """
 
 
+def executive_monthly_orders_sql(project, dataset):
+    """Monthly distinct channel/order pairs under the same filters as the total.
+
+    Grouping includes the channel so COUNT(DISTINCT sales_order_number) within
+    each group equals distinct channel/order pairs; the buckets stay disjoint
+    across months because an order has one order date.
+    """
+    validate_warehouse_identifiers(project, dataset)
+    return """
+    SELECT d.calendar_year AS calendar_year, d.month_number AS month_number,
+           s.sales_channel AS sales_channel,
+           COUNT(DISTINCT s.sales_order_number) AS orders
+    FROM gold_adventureworks.fct_sales s
+    JOIN gold_adventureworks.dim_date d ON s.order_date_key = d.date_key
+    LEFT JOIN gold_adventureworks.dim_product p ON s.product_key = p.product_key
+    WHERE s.sales_order_number IS NOT NULL
+      AND ($year IS NULL OR d.calendar_year = $year)
+      AND ($quarter IS NULL OR d.calendar_quarter_name = $quarter)
+      AND ($channel IS NULL OR s.sales_channel = $channel)
+      AND ($category IS NULL OR COALESCE(p.category_name, 'Unknown') = $category)
+      AND ($subcategory IS NULL OR COALESCE(p.subcategory_name, 'Unknown') = $subcategory)
+    GROUP BY d.calendar_year, d.month_number, s.sales_channel
+    ORDER BY d.calendar_year, d.month_number, s.sales_channel
+    """  # nosec B608
+
+
 def filter_parameters(
     year=None, quarter=None, channel=None, category=None, subcategory=None
 ):
@@ -459,6 +545,9 @@ def _load_executive_report(
     orders = query_rows(executive_orders_sql(project, dataset), parameters)
     total_orders = orders[0]["total_orders_count"] if orders else 0
     monthly = query_rows(executive_monthly_sql(project, dataset), parameters)
+    monthly_orders = query_rows(
+        executive_monthly_orders_sql(project, dataset), parameters
+    )
     detail = query_rows(executive_detail_sql(project, dataset), parameters)
     margin = financials["gross_profit_margin_percentage"]
     revenue = Decimal(str(financials["gross_revenue_amount"] or 0))
@@ -470,6 +559,7 @@ def _load_executive_report(
             None if not total_orders else round(revenue / Decimal(str(total_orders)), 2)
         ),
         "monthly": monthly,
+        "monthly_orders": monthly_orders,
         "detail": detail,
         "fetched_at": datetime.now(timezone.utc).strftime("%H:%M UTC"),
     }
