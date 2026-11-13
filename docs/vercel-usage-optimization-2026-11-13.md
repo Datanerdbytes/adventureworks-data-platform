@@ -147,6 +147,13 @@ Rebuilt the exact container dependency set from `uv.lock` before/after:
 `/` 302, and zero dbt/BigQuery/SQLAlchemy/psycopg2 packages installed. Local
 dev environments still receive the warehouse group through `dev → include-group`.
 
+Deployed via commit `9510897` (push triggers the Vercel Git integration —
+`vercel --prod` from the CLI errors on a project-name rule and is unnecessary).
+Measured production bundle for deployment `k84pz6wbl`:
+`λ services/dashboard/container (171.89MB)` — **−69%** vs 550.49 MB. Live
+checks: `/dashboard` 200 (13.7s cold start, 0.44–0.95s warm), asset routes
+serve `Cache-Control: public, max-age=86400`.
+
 ## Not done (needs a decision)
 
 - **Deploy / commit** — left uncommitted for manual testing. Deploy with
