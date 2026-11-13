@@ -34,10 +34,10 @@ h2 {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid #becbd5;
-  border-radius: 5px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
   padding: 10px 15px;
-  background: white;
+  background: var(--surface);
   color: var(--text);
   font-size: 13px;
   min-height: 44px;
@@ -78,10 +78,7 @@ h2 {
   background: var(--surface);
   color: var(--text);
 }
-:root.theme-dark .field .Select.is-focused > .Select-control {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgb(96 165 250 / 25%);
-}
+/* Focused Select rings need no dark override: --primary-ring is themed. */
 .button.primary {
   background: var(--primary);
   color: white;
@@ -127,7 +124,9 @@ h2 {
 .metric {
   padding: 18px 20px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 .metric strong {
   display: block;
@@ -142,10 +141,12 @@ h2 {
 }
 .card {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   padding: 22px;
   margin-bottom: 24px;
   min-width: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 .card-heading {
   display: flex;
@@ -231,10 +232,16 @@ dd {
 .field input {
   width: 100%;
   min-height: 38px;
-  border: 1px solid #becbd5;
-  border-radius: 4px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
   padding: 7px 12px;
   font-size: 14px;
+}
+/* Dropdowns follow the same compact bordered-control look as inputs. */
+.field .Select-control,
+.chart-granularity .Select-control {
+  border-color: var(--control-border);
+  border-radius: var(--radius);
 }
 .Select {
   font-size: 14px;
@@ -319,15 +326,15 @@ dd {
 }
 .field .Select.is-focused > .Select-control {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgb(34 116 181 / 20%);
+  box-shadow: 0 0 0 2px var(--primary-ring);
 }
 
 /* Fallbacks keep asynchronously loaded assets opaque during server updates.
-   Dark components consume semantic tokens; overlays rise above card surfaces. */
+   Dark components consume semantic tokens; overlays rise above card surfaces.
+   Card shadows need no dark reset: --shadow-card resolves to none. */
 :root.theme-dark .card,
 :root.theme-dark .metric {
   background: var(--surface-raised, #192339);
-  box-shadow: none;
 }
 :root.theme-dark .button {
   border-color: var(--control-border, #71839b);

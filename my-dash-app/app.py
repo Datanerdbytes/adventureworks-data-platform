@@ -210,6 +210,32 @@ def serve_layout():
                         className="sidebar-navigation",
                         **{"aria-label": "Main navigation"},
                     ),
+                    html.Div(
+                        [
+                            html.Span(
+                                "DA",
+                                className="profile-avatar",
+                                **{"aria-hidden": "true"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Span(
+                                        "DEMO ACCOUNT", className="eyebrow nav-label"
+                                    ),
+                                    html.Strong(
+                                        "Demo Analyst",
+                                        className="profile-name nav-label",
+                                    ),
+                                    html.Span(
+                                        "demo@adventureworks.local",
+                                        className="profile-email nav-label",
+                                    ),
+                                ],
+                                className="profile-details",
+                            ),
+                        ],
+                        className="sidebar-profile",
+                    ),
                 ],
                 id="app-sidebar",
             ),

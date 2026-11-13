@@ -98,7 +98,8 @@ class ChartFeedbackTests(unittest.TestCase):
 
     def test_executive_empty_failure_and_success_outputs(self):
         self.assertIn(
-            "Waiting", executive.update_monthly_chart(None, *([ALL] * 5), "line")[1]
+            "Waiting",
+            executive.update_monthly_chart(None, *([ALL] * 5), "line", "month")[1],
         )
         with (
             patch("pages.executive.normalize_filters", return_value=[None] * 5),

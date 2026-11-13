@@ -9,7 +9,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "my-dash-app"))
 from app import app
-from pages.executive import layout, populate_report, normalize_filters, render_report
+from pages.executive import (
+    layout,
+    monthly_figure,
+    populate_report,
+    normalize_filters,
+)
 from revenue_kpis import kpi_cards, kpi_sql
 
 
@@ -83,9 +88,7 @@ class RevenueKpiTests(unittest.TestCase):
                     results.close()
 
     def test_chart_menus_only_trigger_their_own_chart_and_title(self):
-        from dash._callback import GLOBAL_CALLBACK_MAP
-
-        callbacks = {**GLOBAL_CALLBACK_MAP, **app.callback_map}
+        callbacks = app.callback_map
         for menu, expected in (
             (
                 "executive-chart-type",
@@ -101,6 +104,14 @@ class RevenueKpiTests(unittest.TestCase):
                     "executive-secondary.figure",
                     "executive-secondary-status.children",
                     "executive-breakdown-title.children",
+                },
+            ),
+            (
+                "executive-monthly-granularity",
+                {
+                    "executive-primary.figure",
+                    "executive-primary-status.children",
+                    "executive-chart-title.children",
                 },
             ),
         ):
@@ -153,11 +164,13 @@ class RevenueKpiTests(unittest.TestCase):
             self.assertIsInstance(spinner, dcc.Loading)
             self.assertEqual(spinner.children.id, f"executive-kpi-slot-{key}")
         result = update_report(None, *["__all__"] * 5, {})
-        self.assertEqual(len(result), 9)
+        self.assertEqual(len(result), 10)
         self.assertEqual(
             [card.id for card in result[:5]],
             [f"executive-kpi-{key}" for key, _, _ in KPI_FIELDS],
         )
+        # The ranked top-categories card fills the slot right after the KPIs.
+        self.assertIn("No ranked results", str(result[5]))
 
     def test_five_cards_and_percentage_units(self):
         cards = kpi_cards(
@@ -295,8 +308,8 @@ class MonthlyComboChartTests(unittest.TestCase):
             "detail": [],
             "fetched_at": "12:00 UTC",
         }
-        chart = render_report(values, "dual")[1]
-        original = render_report(values)[1]
+        chart = monthly_figure(values, "dual")
+        original = monthly_figure(values)
         self.assertEqual(len(original.data), 1)
         self.assertEqual(original.data[0].type, "scatter")
         self.assertEqual(list(original.data[0].y), [1000, 0, 200])
@@ -423,3 +436,205 @@ class YoyBadgeTests(unittest.TestCase):
                 current, "project", "dataset", 2024, None, None, None, None
             )
             self.assertEqual(result["yoy"]["reason"], "YoY unavailable")
+
+
+MONTHLY_FIXTURE = [
+    {
+        "calendar_year": 2024,
+        "month_name": "January",
+        "sales_channel": "Internet",
+        "revenue": 100,
+        "profit": 50,
+    },
+    {
+        "calendar_year": 2024,
+        "month_name": "January",
+        "sales_channel": "Reseller",
+        "revenue": 900,
+        "profit": 90,
+    },
+    {
+        "calendar_year": 2024,
+        "month_name": "February",
+        "sales_channel": "Internet",
+        "revenue": 0,
+        "profit": -10,
+    },
+    {
+        "calendar_year": 2024,
+        "month_name": "March",
+        "sales_channel": "Internet",
+        "revenue": 200,
+        "profit": -20,
+    },
+]
+
+
+class KpiSparklineTests(unittest.TestCase):
+    def test_series_kpis_get_sparklines_and_scalars_do_not(self):
+        from dash import dcc
+
+        values = {
+            "gross_revenue_amount": 1200,
+            "gross_profit_amount": 120,
+            "gross_profit_margin_percentage": 10.0,
+            "total_orders_count": 5,
+            "average_order_value_aov": 240.0,
+        }
+        cards = kpi_cards(values, note=None, monthly=MONTHLY_FIXTURE)
+        by_key = {card.id: card for card in cards}
+        for key in (
+            "gross_revenue_amount",
+            "gross_profit_amount",
+            "gross_profit_margin_percentage",
+        ):
+            spark = by_key[f"executive-kpi-{key}"].children[-2]
+            self.assertIsInstance(spark, dcc.Graph)
+            self.assertEqual(len(spark.figure.data[0].x), 3)
+        for key in ("total_orders_count", "average_order_value_aov"):
+            card_children = by_key[f"executive-kpi-{key}"].children
+            self.assertFalse(
+                any(isinstance(child, dcc.Graph) for child in card_children)
+            )
+        # The YoY badge stays the last child on every card.
+        from dash import html
+
+        import dash_bootstrap_components as dbc
+
+        for card in cards:
+            self.assertNotIsInstance(card.children[-1], dcc.Graph)
+            self.assertIsInstance(card.children[-1], (html.Div, dbc.Badge))
+
+    def test_margin_sparkline_gaps_zero_revenue_months(self):
+        figure = (
+            kpi_cards(
+                {"gross_profit_margin_percentage": 10.0},
+                note=None,
+                monthly=MONTHLY_FIXTURE,
+            )[2]
+            .children[-2]
+            .figure
+        )
+        self.assertEqual(len(figure.data[0].x), 3)
+        self.assertAlmostEqual(figure.data[0].y[0], 14.0)
+        self.assertIsNone(figure.data[0].y[1])
+        self.assertFalse(figure.data[0].connectgaps)
+
+    def test_without_monthly_rows_cards_stay_plain(self):
+        cards = kpi_cards({"gross_revenue_amount": 1200}, note=None)
+        self.assertEqual(len(cards[0].children), 3)  # label, value, badge
+
+
+class QuarterlyGranularityTests(unittest.TestCase):
+    def test_quarters_sum_monthly_rows_and_recompute_margin(self):
+        values = {
+            "monthly": MONTHLY_FIXTURE,
+            "detail": [],
+            "fetched_at": "12:00 UTC",
+        }
+        line = monthly_figure(values, granularity="quarter")
+        self.assertEqual(len(line.data[0].x), 1)
+        self.assertEqual([round(value) for value in line.data[0].y], [1200])
+        dual = monthly_figure(values, "dual", granularity="quarter")
+        bars, margin_line = dual.data
+        self.assertEqual([round(value) for value in bars.y], [1200])
+        # Quarter margin = summed profit / summed revenue (110/1200), not an
+        # average of the monthly margins.
+        self.assertAlmostEqual(margin_line.y[0], 9.1666667, places=6)
+
+    def test_monthly_remainder_and_titles_track_granularity(self):
+        values = {
+            "monthly": MONTHLY_FIXTURE,
+            "detail": [],
+            "fetched_at": "12:00 UTC",
+        }
+        monthly_line = monthly_figure(values, granularity="month")
+        self.assertEqual(len(monthly_line.data[0].x), 3)
+        callbacks = app.callback_map
+        title_metadata = next(
+            metadata
+            for key, metadata in callbacks.items()
+            if "executive-chart-title.children" in key
+        )
+        self.assertTrue(
+            {
+                "executive-chart-type",
+                "executive-monthly-granularity",
+            }
+            <= {item["id"] for item in title_metadata["inputs"]}
+        )
+
+
+class AdaptedComponentTests(unittest.TestCase):
+    def test_metric_without_sparkline_keeps_original_children(self):
+        from components import metric
+
+        card = metric("Label", "12", "note")
+        self.assertEqual(len(card.children), 3)
+        self.assertEqual(card.children[0].children, "Label")
+        self.assertEqual(card.children[1].children, "12")
+
+    def test_metric_appends_sparkline_last(self):
+        from components import metric
+        import plotly.graph_objects as go
+
+        card = metric("Label", "12", "note", sparkline=go.Figure())
+        self.assertEqual(len(card.children), 4)
+        self.assertEqual(card.children[-1].className, "metric-sparkline")
+
+    def test_ranked_list_orders_rows_and_clamps_shares(self):
+        from components import ranked_list
+
+        rows = [
+            {"name": "Bikes · Road", "value": "$300.00", "share": 0.5},
+            {"name": "Clothing · Jerseys", "value": "$100.00", "share": 1.4},
+            {"name": "Accessories · Pumps", "value": "$0.00", "share": None},
+        ]
+        rendered = ranked_list(rows)
+        self.assertEqual(rendered.className, "ranked-list")
+        self.assertEqual(
+            [item.children[0].children for item in rendered.children], ["1", "2", "3"]
+        )
+        bars = [item.children[1].children[1].children for item in rendered.children]
+        self.assertEqual([bar.style["width"] for bar in bars], ["50%", "100%", "0%"])
+        values = [item.children[-1].children for item in rendered.children]
+        self.assertEqual(values, ["$300.00", "$100.00", "$0.00"])
+
+    def test_ranked_list_empty_state(self):
+        from components import ranked_list
+
+        rendered = ranked_list([])
+        self.assertIn("No ranked results", rendered.children)
+
+    def test_top_category_rows_share_of_positive_revenue(self):
+        from pages.executive import top_category_rows
+
+        detail = [
+            {
+                "product_category": "Bikes",
+                "product_subcategory": "Road",
+                "revenue": 300,
+            },
+            {
+                "product_category": "Bikes",
+                "product_subcategory": "Mountain",
+                "revenue": -50,
+            },
+            {"product_category": None, "product_subcategory": None, "revenue": 100},
+        ]
+        rows = top_category_rows(detail, limit=1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["name"], "Bikes · Road")
+        self.assertEqual(rows[0]["value"], "$300.00")
+        self.assertAlmostEqual(rows[0]["share"], 300 / 400)
+        self.assertEqual(top_category_rows([]), [])
+        negative_only = top_category_rows(
+            [
+                {
+                    "product_category": "Bikes",
+                    "product_subcategory": "Road",
+                    "revenue": -1,
+                }
+            ]
+        )
+        self.assertEqual(negative_only, [])

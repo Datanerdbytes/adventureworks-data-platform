@@ -6,7 +6,8 @@ Lakebase screenshot. Original AdventureWorks branding; no copied vendor assets.
 - Background #F5F7FA; white surfaces; text #243B45; muted #596B78.
 - Primary #2274B5; secondary chart series #138579; borders #DFE6ED.
 - System sans-serif, 16px base, compact 13–14px controls, 28px page headings.
-- 8px spacing basis and card radius; 24px card gaps; restrained shadows.
+- 8px spacing basis; 10px card radius (`--radius-card`, see Figma adaptation);
+  24px card gaps; restrained shadows.
 - Header 72px; desktop sidebar 248px expanded / 72px collapsed.
 - Mobile breakpoint 768px; accessible modal navigation drawer below it.
 - White bordered cards, thin grid lines, blue/teal charts with legends.
@@ -65,6 +66,36 @@ from `curiositech/some_claude_skills`. Keep the existing layout and blue/teal id
   focus, status labels, chart series distinctions and reduced-motion behavior.
 - Restyle chart layout after render and filter updates, preserving series data,
   axis ranges, chart choice and zoom. Never run warehouse loaders for theme changes.
+
+## Figma adaptation (2026-11-13)
+
+A community analytics-dashboard Figma file was adapted onto this console's
+blue/teal identity; its royal blue (#1B59F8) was rejected with the palette
+decision, and the approved console tokens govern all adapted surfaces.
+
+- White sidebar with a right border; the active nav pill and subnav current
+  page use the tokenized `--primary-tint` (light #e6eff7, dark #16305a) rather
+  than hardcoded colors. A demo account card sits at the sidebar bottom and
+  hides when the sidebar collapses.
+- White cards and metric tiles (10px `--radius-card`, hairline border, soft
+  shadow) sit directly on the gray canvas; the former white page-surface panel
+  is now transparent. Dark mode keeps tonal elevation with no card shadows.
+- Controls share one compact bordered look: dropdowns match field inputs,
+  buttons and nav pills use the shared `--radius`, focus rings come from the
+  themed `--primary-ring`, and the topbar sits on `--surface`.
+- Executive KPI cards carry 44px sparklines built only from the loader's
+  already-returned monthly rows (revenue, profit, margin). Orders and AOV have
+  no monthly series, so no trend is invented for them; zero-revenue periods
+  leave margin gaps.
+- The Revenue By Month card owns a Monthly/Quarterly select. Quarters sum the
+  monthly rows and margins are recomputed from sums, never averaged.
+- Ranked top-N rows (rank chip, name, share bar, exact value) present the
+  executive top product categories — the category·subcategory pairs the
+  executive loader already returns; ranking individual products would need a
+  new warehouse query, so none is added. Wholesale's top-reseller bars show
+  exact values on the bars with the value axis hidden. No trend arrows without
+  series data.
+- Page header actions (back link, Export CSV) group in `.page-actions`.
 
 ## Chart feedback
 

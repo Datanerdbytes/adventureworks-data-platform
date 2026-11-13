@@ -3,7 +3,8 @@
 from chart_feedback import status, feedback
 
 import logging
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -11,20 +12,30 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from dash import Input, Output, State, callback, clientside_callback, dcc, html
-from components import card, field, graph, grid, heading
+from components import card, field, graph, grid, heading, ranked_list
 from data import grid_options
 from revenue_kpis import (
+    MARGIN_HOVERTEMPLATE,
+    REVENUE_HOVERTEMPLATE,
     kpi_cards,
     KPI_FIELDS,
     add_yoy_comparison,
     load_filter_catalog,
     load_executive_report,
+    margin_percentage,
+    monthly_points,
     warehouse_location,
 )
 from theme import TOKENS, style_figure
 
 ALL = "__all__"
 FILTERS = ("year", "quarter", "channel", "category", "subcategory")
+Granularity = Literal["month", "quarter"]
+MONTHLY_GRANULARITY_OPTIONS = (
+    {"label": "Monthly", "value": "month"},
+    {"label": "Quarterly", "value": "quarter"},
+)
+GRANULARITY_SPANS = {"month": "Month", "quarter": "Quarter"}
 dash.register_page(
     __name__,
     path="/dashboard/executive",
@@ -50,7 +61,22 @@ def layout():
             heading(
                 "Executive Revenue & Sales Performance",
                 "Warehouse metrics, trends, and product performance in one view.",
-                dcc.Link("← Dashboard overview", href="/dashboard", className="button"),
+                [
+                    dcc.Link(
+                        "← Dashboard overview",
+                        href="/dashboard",
+                        className="button",
+                    ),
+                    dbc.Button(
+                        "Export CSV",
+                        id="executive-header-export",
+                        n_clicks=0,
+                        size="sm",
+                        color="secondary",
+                        className="button",
+                        title="Download the filtered product performance table",
+                    ),
+                ],
             ),
             dcc.Store(id="executive-filter-catalog"),
             dcc.Store(id="executive-filter-load", data=True),
@@ -96,44 +122,63 @@ def layout():
                                     graph("executive-primary"),
                                     status("executive-primary-status"),
                                 ],
-                                html.Details(
+                                html.Div(
                                     [
-                                        html.Summary(
-                                            "•••",
-                                            title="Choose monthly chart",
-                                            **{"aria-label": "Choose monthly chart"},
-                                        ),
                                         html.Div(
+                                            dcc.Dropdown(
+                                                id="executive-monthly-granularity",
+                                                options=MONTHLY_GRANULARITY_OPTIONS,
+                                                value="month",
+                                                clearable=False,
+                                                persistence=True,
+                                                persistence_type="local",
+                                                className="chart-granularity",
+                                            ),
+                                            className="chart-granularity-field",
+                                        ),
+                                        html.Details(
                                             [
-                                                html.Span(
-                                                    "Chart type",
-                                                    className="muted",
-                                                    id="executive-chart-type-label",
+                                                html.Summary(
+                                                    "•••",
+                                                    title="Choose monthly chart",
+                                                    **{
+                                                        "aria-label": "Choose monthly chart"
+                                                    },
                                                 ),
-                                                dcc.RadioItems(
-                                                    id="executive-chart-type",
-                                                    options=[
-                                                        {
-                                                            "label": "Revenue Line",
-                                                            "value": "line",
-                                                        },
-                                                        {
-                                                            "label": "Revenue + Margin",
-                                                            "value": "dual",
-                                                        },
+                                                html.Div(
+                                                    [
+                                                        html.Span(
+                                                            "Chart type",
+                                                            className="muted",
+                                                            id="executive-chart-type-label",
+                                                        ),
+                                                        dcc.RadioItems(
+                                                            id="executive-chart-type",
+                                                            options=[
+                                                                {
+                                                                    "label": "Revenue Line",
+                                                                    "value": "line",
+                                                                },
+                                                                {
+                                                                    "label": "Revenue + Margin",
+                                                                    "value": "dual",
+                                                                },
+                                                            ],
+                                                            value="line",
+                                                            persistence=True,
+                                                            persistence_type="local",
+                                                        ),
                                                     ],
-                                                    value="line",
-                                                    persistence=True,
-                                                    persistence_type="local",
+                                                    className="chart-type-options",
+                                                    **{
+                                                        "aria-labelledby": "executive-chart-type-label"
+                                                    },
                                                 ),
                                             ],
-                                            className="chart-type-options",
-                                            **{
-                                                "aria-labelledby": "executive-chart-type-label"
-                                            },
+                                            className="chart-type-menu",
                                         ),
                                     ],
-                                    className="chart-type-menu",
+                                    className="heading-extras",
                                 ),
                             ),
                             card(
@@ -193,6 +238,18 @@ def layout():
                             ),
                         ],
                         className="report-charts",
+                    ),
+                    card(
+                        "Top categories by revenue",
+                        [
+                            dcc.Loading(
+                                html.Div(ranked_list([]), id="executive-top-products"),
+                                type="circle",
+                            )
+                        ],
+                        html.Span(
+                            "Top 8 · Share of filtered revenue", className="badge"
+                        ),
                     ),
                     product_performance_card(),
                     html.P(id="executive-kpi-status", role="status", className="muted"),
@@ -405,51 +462,57 @@ def revenue_breakdown(channels, detail, chart_type="bar"):
     return figure
 
 
-def render_report(values, chart_type="line", breakdown_type="bar"):
-    monthly = pd.DataFrame([dict(row) for row in values["monthly"]])
-    if monthly.empty:
-        blank = {
-            "data": [],
-            "layout": {
-                "template": "plotly_white",
-                "annotations": [
-                    {
-                        "text": "No data for this selection",
-                        "showarrow": False,
-                        "xref": "paper",
-                        "yref": "paper",
-                        "x": 0.5,
-                        "y": 0.5,
-                    }
-                ],
-            },
-        }
-        return (
-            kpi_cards(values, "No matching sales · USD"),
-            blank,
-            blank,
-            [],
-            "No warehouse sales match the selected filters.",
+def no_data_figure():
+    return {
+        "data": [],
+        "layout": {
+            "template": "plotly_white",
+            "annotations": [
+                {
+                    "text": "No data for this selection",
+                    "showarrow": False,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                }
+            ],
+        },
+    }
+
+
+def monthly_figure(values, chart_type="line", granularity: Granularity = "month"):
+    """Primary trend chart from the loader's monthly sums.
+
+    Quarterly views sum the mart's monthly rows; margins are recomputed from
+    the summed quarters, never averaged.
+    """
+    points = monthly_points(values["monthly"])
+    if not points:
+        return no_data_figure()
+    trend = pd.DataFrame(
+        [
+            {
+                "Date": datetime(point.year, point.month, 1),
+                "revenue": float(point.revenue),
+                "profit": float(point.profit),
+            }
+            for point in points
+        ]
+    )
+    if granularity == "quarter":
+        trend = trend.assign(
+            Date=pd.PeriodIndex(trend["Date"], freq="Q").to_timestamp()
         )
-    monthly["Date"] = pd.to_datetime(
-        monthly["calendar_year"].astype(str)
-        + "-"
-        + monthly["month_name"].str.strip()
-        + "-01",
-        format="%Y-%B-%d",
-    )
-    monthly["revenue"] = monthly["revenue"].astype(float)
-    monthly["profit"] = monthly["profit"].astype(float)
-    trend = (
-        monthly.groupby("Date", as_index=False)[["revenue", "profit"]]
-        .sum()
-        .sort_values("Date")
-    )
+        trend = (
+            trend.groupby("Date", as_index=False)[["revenue", "profit"]]
+            .sum()
+            .sort_values("Date")
+        )
     margin = [
-        profit / revenue * 100 if revenue != 0 else None
+        margin_percentage(revenue, profit)
         for revenue, profit in zip(trend["revenue"], trend["profit"])
     ]
-    channels = monthly.groupby("sales_channel", as_index=False)["revenue"].sum()
     first = make_subplots(specs=[[{"secondary_y": True}]])
     first.add_trace(
         go.Bar(
@@ -457,7 +520,7 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
             y=trend["revenue"],
             name="Gross revenue",
             marker_color=TOKENS["primary"],
-            hovertemplate="%{x|%b %Y}<br>Gross revenue: $%{y:,.2f}<extra></extra>",
+            hovertemplate=REVENUE_HOVERTEMPLATE,
         ),
         secondary_y=False,
     )
@@ -469,7 +532,7 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
             mode="lines+markers",
             connectgaps=False,
             line={"color": TOKENS["teal"], "width": 3},
-            hovertemplate="%{x|%b %Y}<br>Gross profit margin: %{y:.2f}%<extra></extra>",
+            hovertemplate=MARGIN_HOVERTEMPLATE,
         ),
         secondary_y=True,
     )
@@ -505,13 +568,32 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
                 color_discrete_sequence=[TOKENS["primary"]],
             )
         )
-        first.update_traces(
-            hovertemplate="%{x|%b %Y}<br>Gross revenue: $%{y:,.2f}<extra></extra>"
-        )
-    second = revenue_breakdown(channels, values["detail"], breakdown_type)
-    for figure in (first, second):
-        figure.update_layout(height=340)
-    detail = [
+        first.update_traces(hovertemplate=REVENUE_HOVERTEMPLATE)
+    first.update_layout(height=340)
+    return first
+
+
+def breakdown_figure(values, breakdown_type="bar"):
+    """Secondary channel/category chart from the same loaded rows."""
+    if not monthly_points(values["monthly"]):
+        return no_data_figure()
+    monthly = pd.DataFrame([dict(row) for row in values["monthly"]])
+    monthly["revenue"] = monthly["revenue"].astype(float)
+    channels = monthly.groupby("sales_channel", as_index=False)["revenue"].sum()
+    figure = revenue_breakdown(channels, values["detail"], breakdown_type)
+    figure.update_layout(height=340)
+    return figure
+
+
+def report_cards(values):
+    """KPI cards; sparklines only when the selection has monthly rows."""
+    if not monthly_points(values["monthly"]):
+        return kpi_cards(values, "No matching sales · USD")
+    return kpi_cards(values, note=None, monthly=values["monthly"])
+
+
+def detail_rows(values):
+    return [
         {
             "Category": row["product_category"],
             "Subcategory": row["product_subcategory"],
@@ -521,17 +603,47 @@ def render_report(values, chart_type="line", breakdown_type="bar"):
         }
         for row in values["detail"]
     ]
+
+
+def report_status(values):
+    if not monthly_points(values["monthly"]):
+        return "No warehouse sales match the selected filters."
     return (
-        kpi_cards(values, note=None),
-        first,
-        second,
-        detail,
-        f"Warehouse artifact · Fetched {values['fetched_at']} · Cached for up to 60 seconds. Orders count distinct channel/order pairs. AOV is selected-product revenue per purchasing order.",
+        f"Warehouse artifact · Fetched {values['fetched_at']} · Cached for up to 60 "
+        "seconds. Orders count distinct channel/order pairs. AOV is "
+        "selected-product revenue per purchasing order."
     )
+
+
+def top_category_rows(detail, limit=8):
+    """Rank category·subcategory pairs by revenue; shares are of positive revenue."""
+    frame = pd.DataFrame(detail)
+    if frame.empty:
+        return []
+    frame["revenue"] = frame["revenue"].astype(float)
+    grouped = (
+        frame.fillna({"product_category": "Unknown", "product_subcategory": "Unknown"})
+        .groupby(["product_category", "product_subcategory"], as_index=False)["revenue"]
+        .sum()
+    )
+    grouped = grouped[grouped["revenue"] > 0]
+    if grouped.empty:
+        return []
+    total = float(grouped["revenue"].sum())
+    grouped = grouped.sort_values("revenue", ascending=False).head(limit)
+    return [
+        {
+            "name": f"{row.product_category} · {row.product_subcategory}",
+            "value": f"${row.revenue:,.2f}",
+            "share": row.revenue / total if total > 0 else None,
+        }
+        for row in grouped.itertuples(index=False)
+    ]
 
 
 @callback(
     *[Output(f"executive-kpi-slot-{key}", "children") for key, _, _ in KPI_FIELDS],
+    Output("executive-top-products", "children"),
     Output("executive-detail", "rowData"),
     Output("executive-detail", "columnDefs"),
     Output("executive-detail", "dashGridOptions"),
@@ -548,10 +660,8 @@ def update_report(
     category,
     subcategory,
     preferences,
-    chart_type="line",
-    breakdown_type="bar",
 ):
-    cards, *report_outputs = populate_report(
+    cards, top_products, rows, columns, settings, status = populate_report(
         catalog,
         year,
         quarter,
@@ -559,27 +669,33 @@ def update_report(
         category,
         subcategory,
         preferences,
-        chart_type,
-        breakdown_type,
     )
     # Charts have independent callbacks so menu changes do not reload KPIs/table.
-    return (*cards, *report_outputs[2:])
+    return (*cards, top_products, rows, columns, settings, status)
 
 
-def populate_chart(catalog, filters, chart_type, index):
+def populate_chart(
+    catalog, filters, chart_type, index, granularity: Granularity = "month"
+):
     if catalog is None:
         return feedback({}, "Waiting for warehouse filters.")
     try:
         selected = normalize_filters(catalog, *filters)
         values = load_executive_report(*warehouse_location(), *selected)
-        figure = render_report(
-            values,
-            chart_type=chart_type if index == 1 else "line",
-            breakdown_type=chart_type if index == 2 else "bar",
-        )[index]
         note = ""
-        if values["monthly"] and index == 1 and chart_type == "dual":
-            note = "Gross profit margin = summed profit / summed revenue; zero-revenue months have no margin."
+        if index == 1:
+            figure = monthly_figure(values, chart_type, granularity)
+            if values["monthly"]:
+                parts = []
+                if granularity == "quarter":
+                    parts.append("Quarters sum the underlying monthly rows")
+                if chart_type == "dual":
+                    parts.append(
+                        "Gross profit margin = summed profit / summed revenue; zero-revenue periods have no margin."
+                    )
+                note = "; ".join(parts)
+        else:
+            figure = breakdown_figure(values, chart_type)
         return feedback(figure, note)
     except dash.exceptions.PreventUpdate:
         raise
@@ -605,12 +721,17 @@ def populate_chart(catalog, filters, chart_type, index):
     Input("executive-filter-catalog", "data"),
     *[Input(f"executive-{name}", "value") for name in FILTERS],
     Input("executive-chart-type", "value"),
+    Input("executive-monthly-granularity", "value"),
 )
 def update_monthly_chart(
-    catalog, year, quarter, channel, category, subcategory, chart_type
+    catalog, year, quarter, channel, category, subcategory, chart_type, granularity
 ):
     return populate_chart(
-        catalog, (year, quarter, channel, category, subcategory), chart_type, 1
+        catalog,
+        (year, quarter, channel, category, subcategory),
+        chart_type,
+        1,
+        granularity=granularity,
     )
 
 
@@ -637,8 +758,6 @@ def populate_report(
     category,
     subcategory,
     preferences,
-    chart_type="line",
-    breakdown_type="bar",
 ):
     columns: list[dict[str, Any]] = [
         {"field": name}
@@ -678,8 +797,7 @@ def populate_report(
     if catalog is None:
         return (
             kpi_cards(note="Waiting for warehouse filters"),
-            {},
-            {},
+            ranked_list([]),
             [],
             columns,
             settings,
@@ -691,18 +809,22 @@ def populate_report(
         )
         values = load_executive_report(*warehouse_location(), *selected)
         values = add_yoy_comparison(values, *warehouse_location(), *selected)
-        cards, first, second, rows, status = render_report(
-            values, chart_type, breakdown_type
+        top_products = ranked_list(top_category_rows(values["detail"]))
+        return (
+            report_cards(values),
+            top_products,
+            detail_rows(values),
+            columns,
+            settings,
+            report_status(values),
         )
-        return cards, first, second, rows, columns, settings, status
     except dash.exceptions.PreventUpdate:
         raise
     except Exception:
         logging.getLogger(__name__).warning("Executive filtered report unavailable")
         return (
             kpi_cards(note="Warehouse unavailable"),
-            {},
-            {},
+            ranked_list([]),
             [],
             columns,
             settings,
@@ -711,14 +833,15 @@ def populate_report(
 
 
 @callback(
-    Output("executive-chart-title", "children"), Input("executive-chart-type", "value")
+    Output("executive-chart-title", "children"),
+    Input("executive-chart-type", "value"),
+    Input("executive-monthly-granularity", "value"),
 )
-def monthly_chart_title(chart_type):
-    return (
-        "Monthly Revenue & Gross Profit Margin"
-        if chart_type == "dual"
-        else "Revenue By Month"
-    )
+def monthly_chart_title(chart_type, granularity: Granularity = "month"):
+    span = GRANULARITY_SPANS.get(granularity, "Month")
+    if chart_type == "dual":
+        return f"Revenue & Gross Profit Margin by {span}"
+    return f"Revenue By {span}"
 
 
 @callback(
@@ -739,23 +862,12 @@ def product_performance_card():
         "fileName": "executive-product-performance.csv",
         "exportedRows": "filteredAndSorted",
     }
-    return card(
-        "Product performance",
-        [loading],
-        dbc.Button(
-            "Export CSV",
-            id="executive-detail-export",
-            n_clicks=0,
-            size="sm",
-            color="secondary",
-            className="button",
-        ),
-    )
+    return card("Product performance", [loading])
 
 
 @callback(
     Output("executive-detail", "exportDataAsCsv"),
-    Input("executive-detail-export", "n_clicks"),
+    Input("executive-header-export", "n_clicks"),
     prevent_initial_call=True,
 )
 def export_product_performance(n_clicks):

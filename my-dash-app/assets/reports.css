@@ -50,7 +50,7 @@
 }
 .subnav-link[aria-current="page"] {
   color: var(--primary);
-  background: #e6eff7;
+  background: var(--primary-tint);
   font-weight: 600;
 }
 .sidebar-navigation {
@@ -85,9 +85,10 @@ body.sidebar-collapsed .submenu-toggle {
 .report-launcher {
   padding: 22px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   color: var(--text);
-  background: #fafcfe;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -167,8 +168,22 @@ body.sidebar-collapsed .submenu-toggle {
 .metrics.executive-kpis {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
+/* Loading wrappers stretch in the grid; pass that height down the wrapper
+   chain to the cards so sparkline and no-sparkline cards align, with YoY
+   badges on one baseline. */
+.executive-kpis > div > div,
+.executive-kpis div:has(> .metric) {
+  height: 100%;
+}
 .executive-kpis .metric {
   padding: 16px 12px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.executive-kpis .kpi-yoy {
+  margin-top: auto;
 }
 .executive-kpis .metric strong {
   font-size: clamp(16px, 1.6vw, 25px);
@@ -225,6 +240,11 @@ body.sidebar-collapsed .submenu-toggle {
   position: relative;
   margin-left: auto;
 }
+.chart-granularity.is-focused > .Select-control {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-ring);
+}
+
 .chart-type-menu summary {
   display: grid;
   place-items: center;
@@ -265,6 +285,104 @@ body.sidebar-collapsed .submenu-toggle {
   gap: 8px;
   min-height: 44px;
   cursor: pointer;
+}
+
+/* Card-heading extras: granularity select beside the three-dot chart menu. */
+.heading-extras {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.heading-extras .chart-type-menu {
+  margin-left: 0;
+}
+.chart-granularity-field {
+  width: 132px;
+}
+.chart-granularity .Select-control {
+  min-height: 38px;
+  height: 38px;
+  font-size: 13px;
+}
+.chart-granularity .Select-menu-outer {
+  z-index: 30;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Sparkline sits inside the KPI card under the headline value. */
+.metric-sparkline {
+  height: 44px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.metric-sparkline .js-plotly-plot {
+  height: 44px;
+  width: 100%;
+}
+
+/* Ranked top-N rows: position, name, share bar, exact value. */
+.ranked-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ranked-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ranked-row:last-child {
+  border-bottom: 0;
+}
+.ranked-rank {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: var(--primary-tint);
+  color: var(--primary);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ranked-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ranked-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ranked-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background);
+  overflow: hidden;
+}
+.ranked-bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--primary);
+}
+.ranked-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .kpi-yoy {
@@ -405,7 +523,7 @@ body.sidebar-collapsed .submenu-toggle {
 }
 :root.theme-dark .subnav-link[aria-current="page"] {
   color: var(--primary);
-  background: #16305a;
+  background: var(--primary-tint);
 }
 :root.theme-dark .report-launcher {
   background: var(--surface);
@@ -505,6 +623,9 @@ body.sidebar-collapsed .submenu-toggle {
 }
 :root.theme-dark .workspace-create-error {
   color: #fca5a5;
+}
+:root.theme-dark .ranked-track {
+  background: var(--surface-overlay);
 }
 :root.theme-dark .workspace-create-form .field .is-invalid {
   border-color: #fca5a5;

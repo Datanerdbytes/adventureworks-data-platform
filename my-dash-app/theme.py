@@ -8,6 +8,8 @@ TOKENS = {
     "text": "#243B45",
     "muted": "#596B78",
     "primary": "#2274B5",
+    "primary-tint": "#e6eff7",
+    "primary-ring": "rgb(34 116 181 / 20%)",
     "teal": "#138579",
     "border": "#DFE6ED",
     "surface-raised": "#FFFFFF",
@@ -17,6 +19,8 @@ TOKENS = {
     "font": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
     "space": "8px",
     "radius": "8px",
+    "radius-card": "10px",
+    "shadow-card": "0 2px 6px #243b450a",
 }
 
 DARK_TOKENS = {
@@ -25,6 +29,8 @@ DARK_TOKENS = {
     "text": "#f1f5f9",
     "muted": "#94a3b8",
     "primary": "#60a5fa",
+    "primary-tint": "#16305a",
+    "primary-ring": "rgb(96 165 250 / 25%)",
     "teal": "#2dd4bf",
     "border": "#334155",
     "surface-raised": "#192339",
@@ -34,6 +40,8 @@ DARK_TOKENS = {
     "font": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
     "space": "8px",
     "radius": "8px",
+    "radius-card": "10px",
+    "shadow-card": "none",
 }
 
 

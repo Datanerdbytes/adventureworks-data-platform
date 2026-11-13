@@ -7,10 +7,12 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from typing import NamedTuple
 
 import dash_bootstrap_components as dbc
 from flask_caching import Cache
-from components import metric
+from components import metric, sparkline
+from theme import TOKENS
 from warehouse_cache import positive_threshold, positive_lock_timeout, warehouse_memoize
 from warehouse_client import query_rows
 
@@ -22,6 +24,10 @@ KPI_FIELDS = (
     ("total_orders_count", "Total orders", "count"),
     ("average_order_value_aov", "Average order value", "currency"),
 )
+
+REVENUE_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross revenue: $%{y:,.2f}<extra></extra>"
+MARGIN_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross profit margin: %{y:.2f}%<extra></extra>"
+PROFIT_HOVERTEMPLATE = "%{x|%b %Y}<br>Gross profit: $%{y:,.2f}<extra></extra>"
 
 
 def init_kpi_cache(server):
@@ -187,7 +193,98 @@ def add_yoy_comparison(
     return {**values, "yoy": comparison}
 
 
-def kpi_cards(values=None, note="All-time warehouse total"):
+MONTH_INDEX = {
+    month: number
+    for number, month in enumerate(
+        (
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ),
+        start=1,
+    )
+}
+
+
+class MonthlyPoint(NamedTuple):
+    """One summed calendar month, so consumers never unpack positions."""
+
+    year: int
+    month: int
+    revenue: Decimal
+    profit: Decimal
+
+
+def monthly_points(monthly) -> list[MonthlyPoint]:
+    """Aggregate monthly mart rows into sorted calendar-month sums.
+
+    Channels overlap within a month, so measures are summed before trending;
+    rows with unknown month names or years are ignored rather than guessed.
+    """
+    totals: dict[tuple[int, int], tuple[Decimal, Decimal]] = {}
+    for row in monthly or []:
+        month = MONTH_INDEX.get(str(row.get("month_name") or "").strip().title())
+        year = row.get("calendar_year")
+        if month is None or year is None:
+            continue
+        bucket = (int(year), month)
+        current = totals.get(bucket, (Decimal("0"), Decimal("0")))
+        totals[bucket] = (
+            current[0] + Decimal(str(row.get("revenue") or 0)),
+            current[1] + Decimal(str(row.get("profit") or 0)),
+        )
+    return [
+        MonthlyPoint(year, month, *totals[(year, month)])
+        for year, month in sorted(totals)
+    ]
+
+
+def margin_percentage(revenue, profit):
+    """Margin from sums; zero revenue leaves a gap instead of a fake zero."""
+    return profit / revenue * 100 if revenue != 0 else None
+
+
+def kpi_sparkline(key, monthly):
+    """Tiny trend line for one KPI from the already-loaded monthly rows.
+
+    Only the three KPIs with a real monthly series get a sparkline; orders and
+    AOV have no per-month mart rows, so no trend is invented for them. Zero
+    revenue periods leave margin gaps instead of fake zeros.
+    """
+    points = monthly_points(monthly)
+    if len(points) < 2:
+        return None
+    x = [datetime(point.year, point.month, 1) for point in points]
+    if key == "gross_profit_margin_percentage":
+        ys = [
+            margin_percentage(float(point.revenue), float(point.profit))
+            for point in points
+        ]
+        color = TOKENS["teal"]
+        hovertemplate = MARGIN_HOVERTEMPLATE
+    elif key == "gross_revenue_amount":
+        ys = [float(point.revenue) for point in points]
+        color = TOKENS["primary"]
+        hovertemplate = REVENUE_HOVERTEMPLATE
+    elif key == "gross_profit_amount":
+        ys = [float(point.profit) for point in points]
+        color = TOKENS["primary"]
+        hovertemplate = PROFIT_HOVERTEMPLATE
+    else:
+        return None
+    return sparkline(x, ys, color, hovertemplate)
+
+
+def kpi_cards(values=None, note="All-time warehouse total", monthly=None):
     cards = []
     for key, label, kind in KPI_FIELDS:
         value = (values or {}).get(key)
@@ -213,7 +310,12 @@ def kpi_cards(values=None, note="All-time warehouse total"):
                     compact = f"{number / threshold:.2f}".rstrip("0").rstrip(".")
                     display = f"{'$' if kind == 'currency' else ''}{compact}{suffix}"
                     break
-        card = metric(label, display, note)
+        card = metric(
+            label,
+            display,
+            note,
+            sparkline=kpi_sparkline(key, monthly) if values else None,
+        )
         if not note:
             card.children.pop(2)
         card.children[1].title = exact

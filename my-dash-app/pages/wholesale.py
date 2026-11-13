@@ -462,6 +462,11 @@ def compact_card(card, value, currency=False):
     return card
 
 
+# Outside bar labels need headroom on the right edge of the plot; the
+# empty-state figure keeps the default centered margins.
+LEADERBOARD_LABEL_HEADROOM_PX = 120
+
+
 def leaderboard_figure(rows=None, message="No reseller sales match these filters."):
     if not rows:
         figure = style_figure(go.Figure())
@@ -483,19 +488,25 @@ def leaderboard_figure(rows=None, message="No reseller sales match these filters
                 y="reseller_name",
                 orientation="h",
                 custom_data=["exact_revenue"],
+                text="exact_revenue",
                 labels={"revenue": "Revenue (USD)", "reseller_name": "Reseller"},
                 color_discrete_sequence=[TOKENS["primary"]],
             )
         )
         figure.update_traces(
-            hovertemplate="%{y}<br>Revenue: %{customdata[0]}<extra></extra>"
+            hovertemplate="%{y}<br>Revenue: %{customdata[0]}<extra></extra>",
+            textposition="outside",
+            cliponaxis=False,
         )
         figure.update_yaxes(
             categoryorder="array",
             categoryarray=list(frame["reseller_name"])[::-1],
             automargin=True,
         )
-        figure.update_xaxes(tickprefix="$", tickformat="~s")
+        # Exact values sit on the bars, so the value axis stays hidden and the
+        # rows read like the leaderboard progress bars in the adapted design.
+        figure.update_xaxes(visible=False)
+        figure.update_layout(margin={"r": LEADERBOARD_LABEL_HEADROOM_PX}, bargap=0.45)
     figure.update_layout(height=420, showlegend=False)
     return figure
 
